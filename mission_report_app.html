@@ -84,7 +84,6 @@
     font-size:13px; opacity:0; pointer-events:none; transition:opacity .25s; z-index:50;
   }
   .toast.show{opacity:1;}
-  .unit-block{border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; background:var(--panel2);}
   .settings-actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;}
   .config-warning{
     background:rgba(217,83,79,0.15); border:1px solid var(--danger); color:#f3a6a4;
@@ -107,9 +106,29 @@
     display:inline-block; background:var(--accent); color:#fff; border-radius:20px;
     padding:2px 9px; font-size:11px; font-weight:600; margin-left:6px;
   }
+  .gate-wrap{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .gate-wrap .card{max-width:380px; width:100%; margin-bottom:0;}
+  .gate-status{font-size:13px; margin-top:10px; min-height:1em;}
+  .gate-status.error{color:#f3a6a4;}
 </style>
 </head>
 <body>
+
+<div class="gate-wrap" id="appCodeGate">
+  <div class="card">
+    <h2 style="margin-bottom:14px;">Enter Access Code</h2>
+    <div class="field">
+      <label>Passcode</label>
+      <input type="text" id="appCode" inputmode="numeric" placeholder="Ask your point of contact for this code">
+    </div>
+    <button class="btn block" id="appContinueBtn" type="button">Continue</button>
+    <div class="gate-status" id="appCodeStatus"></div>
+  </div>
+</div>
+
+<div id="appContent" class="hidden">
 
 <header>
   <h1>Mission Report</h1>
@@ -150,7 +169,7 @@
       </div>
       <div class="field">
         <label>Line 3 &mdash; Unit</label>
-        <div class="combo" data-combo="unit" data-list="unitNames" data-onchange="onUnitChange"></div>
+        <div class="combo" data-combo="unit" data-list="units"></div>
       </div>
       <div class="field">
         <label>Line 4 &mdash; Supported Agency</label>
@@ -226,7 +245,10 @@
 
     <div class="card">
       <h2>Line 16</h2>
-      <div class="fixed-line">Green 2 at Arrival: GREEN (added automatically)</div>
+      <div class="field">
+        <label>Line 16 &mdash; Green 2 at Arrival</label>
+        <input type="text" id="line16" value="GREEN">
+      </div>
     </div>
 
     <button class="btn block" id="generateBtn" type="button" style="font-size:16px; padding:14px;">Generate Report</button>
@@ -308,9 +330,14 @@
     </div>
 
     <div class="card">
-      <h2>Units &amp; Rosters (Line 3 + Line 14)</h2>
-      <div id="unitsEditor"></div>
-      <button class="btn secondary block" id="addUnitBtn" type="button">+ Add Unit</button>
+      <h2>Units (Line 3)</h2>
+      <textarea id="set-units" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Leaders (Driver &amp; TC for Point 1)</h2>
+      <p class="hint" style="margin-bottom:8px;">Only the first entry in Names &amp; Bumpers uses this dropdown for Driver and TC. Every other entry is a plain text field, since that info now mostly comes in through driver submissions.</p>
+      <textarea id="set-leaders" rows="4"></textarea>
     </div>
 
     <div class="card">
@@ -340,6 +367,8 @@
 
 </main>
 
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -362,10 +391,8 @@
     locations: ["FOB Alpha", "Camp Bravo", "Site Charlie"],
     agencyDefault: "N/A",
     boatsDefault: "0",
-    units: [
-      { name: "1st Squad", drivers: ["Smith", "Johnson", "Lee"], tcs: ["Garcia", "Brown", "Davis"] },
-      { name: "2nd Squad", drivers: ["Wilson", "Martinez"], tcs: ["Anderson", "Taylor"] }
-    ]
+    units: ["1st Squad", "2nd Squad"],
+    leaders: ["Smith", "Johnson", "Lee", "Garcia", "Brown", "Davis"]
   };
   // ===DEFAULT_DATA_END===
 
@@ -387,6 +414,49 @@
   // and must be the same value in driver_submit.html.
   var TEAM_PASSCODE = "272272";
 
+  // Gates access to this app itself (separate from TEAM_PASSCODE above, which
+  // is only used for the shared driver-submissions inbox). Change this and
+  // APP_UNLOCKED_KEY's stored value will no longer match, so it'll prompt
+  // again on next load - that's expected after changing the code.
+  var APP_PASSCODE = "sogsog";
+  var APP_UNLOCKED_KEY = "missionReportAppUnlocked_v1";
+
+  function unlockApp(){
+    document.getElementById("appCodeGate").classList.add("hidden");
+    document.getElementById("appContent").classList.remove("hidden");
+  }
+
+  function tryAppContinue(){
+    var entered = document.getElementById("appCode").value.trim();
+    var statusEl = document.getElementById("appCodeStatus");
+    if(!entered){
+      statusEl.textContent = "Enter the access code.";
+      statusEl.className = "gate-status error";
+      return;
+    }
+    if(entered !== APP_PASSCODE){
+      statusEl.textContent = "That code isn't right.";
+      statusEl.className = "gate-status error";
+      return;
+    }
+    statusEl.textContent = "";
+    statusEl.className = "gate-status";
+    try{ localStorage.setItem(APP_UNLOCKED_KEY, "true"); }catch(e){}
+    unlockApp();
+  }
+
+  (function initAppGate(){
+    try{
+      if(localStorage.getItem(APP_UNLOCKED_KEY) === "true"){
+        unlockApp();
+      }
+    }catch(e){}
+    document.getElementById("appContinueBtn").addEventListener("click", tryAppContinue);
+    document.getElementById("appCode").addEventListener("keydown", function(e){
+      if(e.key === "Enter") tryAppContinue();
+    });
+  })();
+
   var data = loadData();
   var entryCount = 0;
 
@@ -397,6 +467,20 @@
       if(!raw) return JSON.parse(JSON.stringify(DEFAULT_DATA));
       var parsed = JSON.parse(raw);
       if(!parsed.units) parsed.units = [];
+      if(!parsed.leaders) parsed.leaders = [];
+
+      // Migrate the old per-unit { name, drivers, tcs } shape (from before
+      // Units and Driver/TC rosters were split apart) into plain unit name
+      // strings, folding any existing drivers/tcs into the new shared
+      // Leaders list so that data isn't lost.
+      if(parsed.units.length && typeof parsed.units[0] === "object"){
+        parsed.units.forEach(function(u){
+          (u.drivers || []).forEach(function(n){ if(parsed.leaders.indexOf(n) === -1) parsed.leaders.push(n); });
+          (u.tcs || []).forEach(function(n){ if(parsed.leaders.indexOf(n) === -1) parsed.leaders.push(n); });
+        });
+        parsed.units = parsed.units.map(function(u){ return u.name; });
+      }
+
       return parsed;
     }catch(e){
       return JSON.parse(JSON.stringify(DEFAULT_DATA));
@@ -407,32 +491,13 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 
-  function unitNames(){
-    return data.units.map(function(u){ return u.name; });
-  }
-
-  function findUnit(name){
-    if(!name) return null;
-    var lower = name.trim().toLowerCase();
-    for(var i=0;i<data.units.length;i++){
-      if(data.units[i].name.trim().toLowerCase() === lower) return data.units[i];
-    }
-    return null;
-  }
-
   function getListValues(listKey){
-    if(listKey === "unitNames") return unitNames();
     return data[listKey] || [];
   }
 
   function addToList(listKey, value){
     value = (value || "").trim();
     if(!value) return;
-
-    if(listKey === "unitNames"){
-      if(!findUnit(value)) data.units.push({ name: value, drivers: [], tcs: [] });
-      return;
-    }
 
     var list = data[listKey];
     if(!list) return;
@@ -541,26 +606,12 @@
     return document.querySelector('.combo[data-combo="' + name + '"]');
   }
 
-  window.comboHandlers = {
-    onUnitChange: function(){
-      refreshAllEntryRosters();
-    }
-  };
-
   function initAllCombos(root){
     (root || document).querySelectorAll(".combo").forEach(buildCombo);
   }
 
   // ---------- Line 14 entries (Names & Bumpers) ----------
   var entriesContainer = document.getElementById("entries");
-
-  function currentUnitObj(){
-    var unitContainer = document.querySelector('.combo[data-combo="unit"]');
-    var select = unitContainer.querySelector("select");
-    var customInput = unitContainer.querySelector(".custom-input");
-    var name = select.value === "__custom__" ? customInput.value.trim() : select.value;
-    return findUnit(name);
-  }
 
   function buildRosterSelect(selectEl, list, previousValue){
     selectEl.innerHTML = "";
@@ -583,46 +634,70 @@
     }
   }
 
+  // Only the first entry gets Driver/TC as a dropdown (sourced from the
+  // Leaders list in Settings). Every entry after that is plain text, since
+  // that info now mostly comes in pre-filled from driver submissions.
   function addEntry(presetData){
     entryCount++;
     var id = entryCount;
-    var unit = currentUnitObj();
+    var isLeaderEntry = (id === 1);
 
     var wrap = document.createElement("div");
     wrap.className = "entry";
     wrap.dataset.entryId = id;
+
+    var driverTcHtml;
+    if(isLeaderEntry){
+      driverTcHtml =
+        '<div class="field"><label>Driver</label>' +
+          '<select class="e-driver-select"></select>' +
+          '<input type="text" class="custom-input hidden e-driver-custom" placeholder="Type driver name"></div>' +
+        '<div class="field"><label>TC</label>' +
+          '<select class="e-tc-select"></select>' +
+          '<input type="text" class="custom-input hidden e-tc-custom" placeholder="Type TC name"></div>';
+    } else {
+      driverTcHtml =
+        '<div class="field"><label>Driver</label><input type="text" class="e-driver-text"></div>' +
+        '<div class="field"><label>TC</label><input type="text" class="e-tc-text"></div>';
+    }
+
     wrap.innerHTML =
       '<div class="entry-head"><strong>Point / Vehicle #' + id + '</strong>' +
       '<button type="button" class="btn danger remove-entry">Remove</button></div>' +
       '<div class="field"><label>Point Name</label><input type="text" class="e-pointname"></div>' +
       '<div class="field"><label>Plate</label><input type="text" class="e-plate"></div>' +
-      '<div class="field"><label>Driver</label>' +
-        '<select class="e-driver-select"></select>' +
-        '<input type="text" class="custom-input hidden e-driver-custom" placeholder="Type driver name"></div>' +
-      '<div class="field"><label>TC</label>' +
-        '<select class="e-tc-select"></select>' +
-        '<input type="text" class="custom-input hidden e-tc-custom" placeholder="Type TC name"></div>' +
+      driverTcHtml +
       '<div class="field"><label>Other Passengers</label>' +
         '<textarea class="e-passengers" rows="3" placeholder="One name per line"></textarea></div>';
 
     entriesContainer.appendChild(wrap);
 
-    var driverSelect = wrap.querySelector(".e-driver-select");
-    var driverCustom = wrap.querySelector(".e-driver-custom");
-    var tcSelect = wrap.querySelector(".e-tc-select");
-    var tcCustom = wrap.querySelector(".e-tc-custom");
+    if(isLeaderEntry){
+      var driverSelect = wrap.querySelector(".e-driver-select");
+      var driverCustom = wrap.querySelector(".e-driver-custom");
+      var tcSelect = wrap.querySelector(".e-tc-select");
+      var tcCustom = wrap.querySelector(".e-tc-custom");
 
-    buildRosterSelect(driverSelect, unit ? unit.drivers : []);
-    buildRosterSelect(tcSelect, unit ? unit.tcs : []);
+      buildRosterSelect(driverSelect, data.leaders);
+      buildRosterSelect(tcSelect, data.leaders);
 
-    driverSelect.addEventListener("change", function(){
-      driverCustom.classList.toggle("hidden", driverSelect.value !== "__custom__");
-      if(driverSelect.value === "__custom__") driverCustom.focus();
-    });
-    tcSelect.addEventListener("change", function(){
-      tcCustom.classList.toggle("hidden", tcSelect.value !== "__custom__");
-      if(tcSelect.value === "__custom__") tcCustom.focus();
-    });
+      driverSelect.addEventListener("change", function(){
+        driverCustom.classList.toggle("hidden", driverSelect.value !== "__custom__");
+        if(driverSelect.value === "__custom__") driverCustom.focus();
+      });
+      tcSelect.addEventListener("change", function(){
+        tcCustom.classList.toggle("hidden", tcSelect.value !== "__custom__");
+        if(tcSelect.value === "__custom__") tcCustom.focus();
+      });
+
+      if(presetData){
+        setRosterSelectValue(driverSelect, driverCustom, presetData.driver);
+        setRosterSelectValue(tcSelect, tcCustom, presetData.tc);
+      }
+    } else if(presetData){
+      wrap.querySelector(".e-driver-text").value = presetData.driver || "";
+      wrap.querySelector(".e-tc-text").value = presetData.tc || "";
+    }
 
     wrap.querySelector(".remove-entry").addEventListener("click", function(){
       wrap.remove();
@@ -631,8 +706,6 @@
     if(presetData){
       wrap.querySelector(".e-pointname").value = presetData.pointName || "";
       wrap.querySelector(".e-plate").value = presetData.plate || "";
-      setRosterSelectValue(driverSelect, driverCustom, presetData.driver);
-      setRosterSelectValue(tcSelect, tcCustom, presetData.tc);
       if(presetData.passengers && presetData.passengers.length){
         wrap.querySelector(".e-passengers").value = presetData.passengers.join("\n");
       }
@@ -654,18 +727,6 @@
       customInputEl.value = value;
       customInputEl.classList.remove("hidden");
     }
-  }
-
-  function refreshAllEntryRosters(){
-    var unit = currentUnitObj();
-    document.querySelectorAll(".entry").forEach(function(wrap){
-      var driverSelect = wrap.querySelector(".e-driver-select");
-      var tcSelect = wrap.querySelector(".e-tc-select");
-      var prevDriver = driverSelect.value !== "__custom__" ? driverSelect.value : "";
-      var prevTc = tcSelect.value !== "__custom__" ? tcSelect.value : "";
-      buildRosterSelect(driverSelect, unit ? unit.drivers : [], prevDriver);
-      buildRosterSelect(tcSelect, unit ? unit.tcs : [], prevTc);
-    });
   }
 
   document.getElementById("addEntryBtn").addEventListener("click", addEntry);
@@ -708,25 +769,32 @@
     lines.push("Line 14 (Names & Bumpers):");
     lines.push("");
 
-    var unitObj = findUnit(unit);
     var entrySnapshots = [];
 
     document.querySelectorAll(".entry").forEach(function(wrap){
       var pointName = wrap.querySelector(".e-pointname").value.trim();
       var plate = wrap.querySelector(".e-plate").value.trim();
+      var driver, tc;
+
       var driverSelect = wrap.querySelector(".e-driver-select");
-      var driverCustom = wrap.querySelector(".e-driver-custom");
-      var tcSelect = wrap.querySelector(".e-tc-select");
-      var tcCustom = wrap.querySelector(".e-tc-custom");
+      if(driverSelect){
+        // First entry: Driver/TC come from the Leaders dropdown.
+        var driverCustom = wrap.querySelector(".e-driver-custom");
+        var tcSelect = wrap.querySelector(".e-tc-select");
+        var tcCustom = wrap.querySelector(".e-tc-custom");
 
-      var driver = driverSelect.value === "__custom__" ? driverCustom.value.trim() : driverSelect.value;
-      var tc = tcSelect.value === "__custom__" ? tcCustom.value.trim() : tcSelect.value;
-      var passengers = linesToArray(wrap.querySelector(".e-passengers").value);
+        driver = driverSelect.value === "__custom__" ? driverCustom.value.trim() : driverSelect.value;
+        tc = tcSelect.value === "__custom__" ? tcCustom.value.trim() : tcSelect.value;
 
-      if(unitObj){
-        if(driverSelect.value === "__custom__" && driver && unitObj.drivers.indexOf(driver) === -1) unitObj.drivers.push(driver);
-        if(tcSelect.value === "__custom__" && tc && unitObj.tcs.indexOf(tc) === -1) unitObj.tcs.push(tc);
+        if(driverSelect.value === "__custom__" && driver) addToList("leaders", driver);
+        if(tcSelect.value === "__custom__" && tc) addToList("leaders", tc);
+      } else {
+        // Every other entry: plain text fields.
+        driver = wrap.querySelector(".e-driver-text").value.trim();
+        tc = wrap.querySelector(".e-tc-text").value.trim();
       }
+
+      var passengers = linesToArray(wrap.querySelector(".e-passengers").value);
 
       lines.push(pointName);
       lines.push("Plate: " + plate);
@@ -739,7 +807,7 @@
     });
 
     lines.push("Line 15 (Time of Arrival): " + pad4(document.getElementById("toa").value));
-    lines.push("Line 16 (Green 2 at Arrival): GREEN");
+    lines.push("Line 16 (Green 2 at Arrival): " + document.getElementById("line16").value.trim());
 
     // Remember these fields so the next new report opens pre-filled.
     // Instance-specific fields (PAX, vehicles, boats, times, departure/destination)
@@ -811,54 +879,16 @@
     document.getElementById("set-locations").value = (data.locations || []).join("\n");
     document.getElementById("set-agencyDefault").value = data.agencyDefault || "";
     document.getElementById("set-boatsDefault").value = data.boatsDefault || "";
-    renderUnitsEditor();
+    document.getElementById("set-units").value = (data.units || []).join("\n");
+    document.getElementById("set-leaders").value = (data.leaders || []).join("\n");
   }
-
-  function renderUnitsEditor(){
-    var container = document.getElementById("unitsEditor");
-    container.innerHTML = "";
-    data.units.forEach(function(unit, idx){
-      var block = document.createElement("div");
-      block.className = "unit-block";
-      block.dataset.idx = idx;
-      block.innerHTML =
-        '<div class="entry-head"><strong>Unit</strong>' +
-        '<button type="button" class="btn danger remove-unit">Remove</button></div>' +
-        '<div class="field"><label>Unit Name</label><input type="text" class="u-name" value="' + escapeAttr(unit.name) + '"></div>' +
-        '<div class="field"><label>Drivers (one per line)</label><textarea class="u-drivers" rows="3">' + escapeHtml((unit.drivers||[]).join("\n")) + '</textarea></div>' +
-        '<div class="field"><label>TCs (one per line)</label><textarea class="u-tcs" rows="3">' + escapeHtml((unit.tcs||[]).join("\n")) + '</textarea></div>';
-      container.appendChild(block);
-      block.querySelector(".remove-unit").addEventListener("click", function(){
-        block.remove();
-      });
-    });
-  }
-
-  function escapeAttr(s){
-    return (s||"").replace(/"/g, "&quot;");
-  }
-  function escapeHtml(s){
-    return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  }
-
-  document.getElementById("addUnitBtn").addEventListener("click", function(){
-    var container = document.getElementById("unitsEditor");
-    var block = document.createElement("div");
-    block.className = "unit-block";
-    block.innerHTML =
-      '<div class="entry-head"><strong>Unit</strong>' +
-      '<button type="button" class="btn danger remove-unit">Remove</button></div>' +
-      '<div class="field"><label>Unit Name</label><input type="text" class="u-name"></div>' +
-      '<div class="field"><label>Drivers (one per line)</label><textarea class="u-drivers" rows="3"></textarea></div>' +
-      '<div class="field"><label>TCs (one per line)</label><textarea class="u-tcs" rows="3"></textarea></div>';
-    container.appendChild(block);
-    block.querySelector(".remove-unit").addEventListener("click", function(){
-      block.remove();
-    });
-  });
 
   function linesToArray(str){
     return (str || "").split("\n").map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  }
+
+  function escapeHtml(s){
+    return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   }
 
   function collectSettingsFromForm(){
@@ -869,18 +899,8 @@
     data.locations = linesToArray(document.getElementById("set-locations").value);
     data.agencyDefault = document.getElementById("set-agencyDefault").value.trim();
     data.boatsDefault = document.getElementById("set-boatsDefault").value.trim();
-
-    var units = [];
-    document.querySelectorAll("#unitsEditor .unit-block").forEach(function(block){
-      var name = block.querySelector(".u-name").value.trim();
-      if(!name) return;
-      units.push({
-        name: name,
-        drivers: linesToArray(block.querySelector(".u-drivers").value),
-        tcs: linesToArray(block.querySelector(".u-tcs").value)
-      });
-    });
-    data.units = units;
+    data.units = linesToArray(document.getElementById("set-units").value);
+    data.leaders = linesToArray(document.getElementById("set-leaders").value);
   }
 
   document.getElementById("saveSettingsBtn").addEventListener("click", function(){
@@ -914,7 +934,8 @@
       locations: data.locations,
       agencyDefault: data.agencyDefault,
       boatsDefault: data.boatsDefault,
-      units: data.units
+      units: data.units,
+      leaders: data.leaders
     };
 
     var newBlock = startMarker + "\n  var DEFAULT_DATA = " + JSON.stringify(exportData, null, 2) + ";\n  ";
