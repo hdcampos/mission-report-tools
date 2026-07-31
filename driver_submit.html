@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Vehicle Submission</title>
+
+<!-- Firebase (compat SDK - simplest to use with no build step) -->
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#0f1720; --panel:#1a2430; --panel2:#212d3b; --border:#2e3d4d;
+    --text:#e8edf2; --muted:#8fa1b3; --accent:#3d8bfd; --accent2:#2a9d5c;
+    --danger:#d9534f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding-bottom:40px;
+  }
+  header{
+    position:sticky; top:0; z-index:10; background:var(--panel);
+    border-bottom:1px solid var(--border); padding:14px 16px;
+  }
+  header h1{font-size:17px; margin:0; font-weight:600;}
+  header p{font-size:12px; color:var(--muted); margin:4px 0 0;}
+  main{padding:14px; max-width:520px; margin:0 auto;}
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:16px; margin-bottom:14px;
+  }
+  .field{margin-bottom:14px;}
+  .field:last-child{margin-bottom:0;}
+  label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px;}
+  input[type=text], textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text); padding:12px 10px; border-radius:8px; font-size:16px;
+    -webkit-appearance:none; appearance:none;
+  }
+  textarea{resize:vertical; min-height:80px; font-family:inherit;}
+  .hint{font-size:12px; color:var(--muted); margin-top:4px;}
+  .btn{
+    display:block; width:100%; background:var(--accent); color:#fff; border:none;
+    padding:14px 16px; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer;
+    text-align:center;
+  }
+  .btn:disabled{opacity:0.5;}
+  .status{
+    margin-top:12px; padding:10px 12px; border-radius:8px; font-size:14px;
+    text-align:center; display:none;
+  }
+  .status.success{display:block; background:rgba(42,157,92,0.15); border:1px solid var(--accent2); color:#7fe0a8;}
+  .status.error{display:block; background:rgba(217,83,79,0.15); border:1px solid var(--danger); color:#f3a6a4;}
+  .status.sending{display:block; background:var(--panel2); border:1px solid var(--border); color:var(--muted);}
+  .config-warning{
+    background:rgba(217,83,79,0.15); border:1px solid var(--danger); color:#f3a6a4;
+    padding:12px; border-radius:8px; font-size:13px; margin-bottom:14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Submit Vehicle Info</h1>
+  <p>Fill this out once per vehicle. It goes straight to whoever is putting the report together.</p>
+</header>
+
+<main>
+
+  <div class="card" id="configWarning" style="display:none;">
+    <div class="config-warning">
+      This form isn't connected to a shared inbox yet. Whoever set this up needs to paste their
+      Firebase project config into the FIREBASE_CONFIG block near the top of this file's source.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label>Point / Vehicle Name</label>
+      <input type="text" id="pointName" placeholder="e.g. Point 1, Lead, Trail">
+    </div>
+    <div class="field">
+      <label>License Plate</label>
+      <input type="text" id="plate">
+    </div>
+    <div class="field">
+      <label>Driver</label>
+      <input type="text" id="driver">
+    </div>
+    <div class="field">
+      <label>TC</label>
+      <input type="text" id="tc">
+    </div>
+    <div class="field">
+      <label>Other Passengers</label>
+      <textarea id="passengers" placeholder="One name per line (leave blank if none)"></textarea>
+      <div class="hint">Don't include the Driver or TC here &mdash; just everyone else riding along.</div>
+    </div>
+
+    <button class="btn" id="submitBtn" type="button">Submit</button>
+    <div class="status" id="status"></div>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===FIREBASE_CONFIG_START===
+  // Paste your Firebase project's config here (Firebase Console -> Project
+  // Settings -> General -> Your apps -> SDK setup and configuration).
+  // This same object must also be pasted into mission_report_app.html so
+  // both files talk to the same shared database.
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB1sX5OH36mtFqBJ2795kM7_GEgCXvW2ts",
+    authDomain: "mission-report-submissions.firebaseapp.com",
+    projectId: "mission-report-submissions",
+    storageBucket: "mission-report-submissions.firebasestorage.app",
+    messagingSenderId: "592950698534",
+    appId: "1:592950698534:web:042b51232b84ebcc323ce7"
+  };
+  // ===FIREBASE_CONFIG_END===
+
+  var isConfigured = FIREBASE_CONFIG.apiKey.indexOf("PASTE_YOUR") === -1;
+
+  var submitBtn = document.getElementById("submitBtn");
+  var statusEl = document.getElementById("status");
+
+  if(!isConfigured){
+    document.getElementById("configWarning").style.display = "block";
+    submitBtn.disabled = true;
+  }
+
+  var db = null;
+  if(isConfigured && window.firebase){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+  }
+
+  function setStatus(msg, type){
+    statusEl.textContent = msg;
+    statusEl.className = "status" + (type ? " " + type : "");
+  }
+
+  function linesToArray(str){
+    return (str || "").split("\n").map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  }
+
+  function clearForm(){
+    document.getElementById("pointName").value = "";
+    document.getElementById("plate").value = "";
+    document.getElementById("driver").value = "";
+    document.getElementById("tc").value = "";
+    document.getElementById("passengers").value = "";
+  }
+
+  submitBtn.addEventListener("click", function(){
+    if(!db){
+      setStatus("Not connected - see the notice above.", "error");
+      return;
+    }
+
+    var pointName = document.getElementById("pointName").value.trim();
+    var plate = document.getElementById("plate").value.trim();
+    var driver = document.getElementById("driver").value.trim();
+    var tc = document.getElementById("tc").value.trim();
+    var passengers = linesToArray(document.getElementById("passengers").value);
+
+    if(!pointName && !plate && !driver){
+      setStatus("Fill in at least a Point Name, Plate, or Driver before submitting.", "error");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    setStatus("Submitting...", "sending");
+
+    db.collection("submissions").add({
+      pointName: pointName,
+      plate: plate,
+      driver: driver,
+      tc: tc,
+      passengers: passengers,
+      used: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(function(){
+      setStatus("Submitted. Thank you — you can submit another vehicle if needed.", "success");
+      clearForm();
+      submitBtn.disabled = false;
+    }).catch(function(err){
+      setStatus("Submission failed: " + err.message, "error");
+      submitBtn.disabled = false;
+    });
+  });
+
+})();
+</script>
+
+</body>
+</html>

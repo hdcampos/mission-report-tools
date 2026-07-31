@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Mission Report Tools</title>
+<style>
+  :root{
+    --bg:#0f1720; --panel:#1a2430; --panel2:#212d3b; --border:#2e3d4d;
+    --text:#e8edf2; --muted:#8fa1b3; --accent:#3d8bfd;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  main{max-width:420px; width:100%;}
+  h1{font-size:20px; margin:0 0 6px; text-align:center;}
+  p.sub{color:var(--muted); font-size:14px; text-align:center; margin:0 0 28px;}
+  a.card{
+    display:block; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:20px; margin-bottom:14px; text-decoration:none; color:var(--text);
+  }
+  a.card:active{background:var(--panel2);}
+  a.card h2{font-size:16px; margin:0 0 6px;}
+  a.card p{font-size:13px; color:var(--muted); margin:0;}
+  .tag{
+    display:inline-block; background:var(--accent); color:#fff; font-size:11px;
+    font-weight:600; padding:2px 8px; border-radius:20px; margin-bottom:8px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mission Report Tools</h1>
+  <p class="sub">Pick the one that applies to you.</p>
+
+  <a class="card" href="driver_submit.html">
+    <span class="tag">Drivers</span>
+    <h2>Submit Vehicle Info</h2>
+    <p>Send your Point, Plate, Driver, TC, and Passengers in.</p>
+  </a>
+
+  <a class="card" href="mission_report_app.html">
+    <span class="tag">Report Builder</span>
+    <h2>Build the Mission Report</h2>
+    <p>Collect driver submissions and generate the final report text.</p>
+  </a>
+</main>
+</body>
+</html>

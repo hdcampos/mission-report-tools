@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Mission Report Builder</title>
+
+<!-- Firebase (compat SDK - simplest to use with no build step). Only used
+     by the Submissions tab; the rest of the app works fine without it. -->
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#0f1720; --panel:#1a2430; --panel2:#212d3b; --border:#2e3d4d;
+    --text:#e8edf2; --muted:#8fa1b3; --accent:#3d8bfd; --accent2:#2a9d5c;
+    --danger:#d9534f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding-bottom:40px;
+  }
+  header{
+    position:sticky; top:0; z-index:10; background:var(--panel);
+    border-bottom:1px solid var(--border); padding:14px 16px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  header h1{font-size:17px; margin:0; font-weight:600;}
+  .tabs{display:flex; gap:6px;}
+  .tab-btn{
+    background:none; border:1px solid var(--border); color:var(--muted);
+    padding:8px 12px; border-radius:8px; font-size:13px; cursor:pointer;
+  }
+  .tab-btn.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  main{padding:14px; max-width:640px; margin:0 auto;}
+  section.page{display:none;}
+  section.page.active{display:block;}
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:14px; margin-bottom:14px;
+  }
+  .card h2{font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 12px;}
+  .field{margin-bottom:14px;}
+  .field:last-child{margin-bottom:0;}
+  label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px;}
+  select, input[type=text], input[type=number], textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text); padding:11px 10px; border-radius:8px; font-size:15px;
+    -webkit-appearance:none; appearance:none;
+  }
+  textarea{resize:vertical; min-height:70px; font-family:inherit;}
+  input.custom-input{margin-top:8px;}
+  .hidden{display:none !important;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .entry{
+    border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px;
+    background:var(--panel2);
+  }
+  .entry-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .entry-head strong{font-size:13px; color:var(--text);}
+  .btn{
+    display:inline-block; background:var(--accent); color:#fff; border:none;
+    padding:11px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;
+    text-align:center;
+  }
+  .btn.secondary{background:var(--panel2); border:1px solid var(--border); color:var(--text);}
+  .btn.danger{background:transparent; border:1px solid var(--danger); color:var(--danger); padding:7px 10px; font-size:12px; font-weight:500;}
+  .btn.small{padding:7px 10px; font-size:12px; font-weight:500;}
+  .btn.block{display:block; width:100%;}
+  .btn-row{display:flex; gap:10px; flex-wrap:wrap;}
+  .hint{font-size:12px; color:var(--muted); margin-top:4px;}
+  .fixed-line{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:10px; font-size:14px; color:var(--muted);
+  }
+  #preview{
+    width:100%; min-height:380px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; white-space:pre; line-height:1.5;
+  }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--accent2); color:#fff; padding:10px 18px; border-radius:20px;
+    font-size:13px; opacity:0; pointer-events:none; transition:opacity .25s; z-index:50;
+  }
+  .toast.show{opacity:1;}
+  .unit-block{border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; background:var(--panel2);}
+  .settings-actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;}
+  .config-warning{
+    background:rgba(217,83,79,0.15); border:1px solid var(--danger); color:#f3a6a4;
+    padding:12px; border-radius:8px; font-size:13px;
+  }
+  .submission-card{
+    border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px;
+    background:var(--panel2);
+  }
+  .submission-card .sub-row{font-size:14px; margin-bottom:4px;}
+  .submission-card .sub-row strong{color:var(--muted); font-weight:500;}
+  .submission-card .sub-time{font-size:11px; color:var(--muted); margin-bottom:8px;}
+  .empty-state{font-size:13px; color:var(--muted); text-align:center; padding:20px 10px;}
+  .pax-suggestion{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:10px; font-size:13px; margin-top:8px; display:none;
+  }
+  .pax-suggestion.show{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+  .badge{
+    display:inline-block; background:var(--accent); color:#fff; border-radius:20px;
+    padding:2px 9px; font-size:11px; font-weight:600; margin-left:6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mission Report</h1>
+  <div class="tabs">
+    <button class="tab-btn active" data-page="report">Report</button>
+    <button class="tab-btn" data-page="submissions">Submissions<span class="badge hidden" id="submissionsBadge">0</span></button>
+    <button class="tab-btn" data-page="settings">Settings</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ REPORT PAGE ============ -->
+  <section id="page-report" class="page active">
+
+    <div class="card" id="lastUsedBanner" style="display:none;">
+      <p class="hint" style="margin:0 0 10px;">Title, Mission, Objective, Unit, Agency, POCs, and Names &amp; Bumpers are pre-filled from your last report. PAX, vehicles, boats, times, and locations are left blank.</p>
+      <button class="btn secondary block" id="clearLastUsedBtn" type="button">Start Fresh (Clear Remembered Fields)</button>
+    </div>
+
+    <div class="card">
+      <h2>Mission Report Title</h2>
+      <div class="field">
+        <label>MISSION REPORT -</label>
+        <div class="combo" data-combo="title" data-list="missionNames"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Basics</h2>
+      <div class="field">
+        <label>Line 1 &mdash; Mission</label>
+        <div class="combo" data-combo="mission" data-list="missions"></div>
+      </div>
+      <div class="field">
+        <label>Line 2 &mdash; Objective</label>
+        <div class="combo" data-combo="objective" data-list="objectives"></div>
+      </div>
+      <div class="field">
+        <label>Line 3 &mdash; Unit</label>
+        <div class="combo" data-combo="unit" data-list="unitNames" data-onchange="onUnitChange"></div>
+      </div>
+      <div class="field">
+        <label>Line 4 &mdash; Supported Agency</label>
+        <input type="text" id="agency">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Points of Contact</h2>
+      <div class="field">
+        <label>Line 5 &mdash; Primary POC</label>
+        <div class="combo" data-combo="primaryPOC" data-list="pocs"></div>
+      </div>
+      <div class="field">
+        <label>Line 6 &mdash; Alternate POC</label>
+        <div class="combo" data-combo="altPOC" data-list="pocs"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Numbers</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Line 7 &mdash; # of PAX</label>
+          <input type="number" id="pax" min="0" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label>Line 8 &mdash; # of Vehicles</label>
+          <input type="number" id="vehicles" min="0" inputmode="numeric">
+        </div>
+      </div>
+      <div class="pax-suggestion" id="paxSuggestion">
+        <span id="paxSuggestionText"></span>
+        <button class="btn small" id="usePaxSuggestionBtn" type="button">Use This</button>
+      </div>
+      <div class="field">
+        <label>Line 9 &mdash; # of Boats</label>
+        <input type="text" id="boats">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Movement</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Line 10 &mdash; Time of Departure (military)</label>
+          <input type="text" id="tod" maxlength="4" inputmode="numeric" placeholder="e.g. 0630">
+        </div>
+        <div class="field">
+          <label>Line 12 &mdash; ETA (military)</label>
+          <input type="text" id="eta" maxlength="4" inputmode="numeric" placeholder="e.g. 0900">
+        </div>
+      </div>
+      <div class="field">
+        <label>Line 11 &mdash; Departure Location</label>
+        <div class="combo" data-combo="depLoc" data-list="locations"></div>
+      </div>
+      <div class="field">
+        <label>Line 13 &mdash; Destination</label>
+        <div class="combo" data-combo="dest" data-list="locations"></div>
+      </div>
+      <div class="field">
+        <label>Line 15 &mdash; Time of Arrival (military)</label>
+        <input type="text" id="toa" maxlength="4" inputmode="numeric" placeholder="e.g. 0945">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Line 14 &mdash; Names &amp; Bumpers</h2>
+      <div id="entries"></div>
+      <button class="btn secondary block" id="addEntryBtn" type="button">+ Add Point / Vehicle</button>
+    </div>
+
+    <div class="card">
+      <h2>Line 16</h2>
+      <div class="fixed-line">Green 2 at Arrival: GREEN (added automatically)</div>
+    </div>
+
+    <button class="btn block" id="generateBtn" type="button" style="font-size:16px; padding:14px;">Generate Report</button>
+
+    <div class="card" id="outputCard" style="display:none;">
+      <h2>Preview</h2>
+      <textarea id="preview" readonly></textarea>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn secondary" id="copyBtn" type="button">Copy to Clipboard</button>
+        <button class="btn" id="downloadBtn" type="button">Download .txt</button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============ SUBMISSIONS PAGE ============ -->
+  <section id="page-submissions" class="page">
+
+    <div class="card" id="submissionsConfigWarning" style="display:none;">
+      <div class="config-warning">
+        This isn't connected to a shared inbox yet. Paste your Firebase project config into the
+        FIREBASE_CONFIG block near the top of this file's source (same config as driver_submit.html).
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Incoming from Drivers</h2>
+      <p class="hint" style="margin-bottom:12px;">Live list of vehicles drivers have submitted. Tap "Add to Report" to drop one straight into Line 14 on the Report tab.</p>
+      <div id="submissionsList">
+        <div class="empty-state">Waiting for submissions...</div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============ SETTINGS PAGE ============ -->
+  <section id="page-settings" class="page">
+
+    <div class="card">
+      <h2>About</h2>
+      <p class="hint">Edit the dropdown lists below. One item per line. Values you type as "custom" on the Report tab are also saved here automatically. Changes save to this device only.</p>
+    </div>
+
+    <div class="card">
+      <h2>Mission Report Titles</h2>
+      <textarea id="set-missionNames" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Missions (Line 1)</h2>
+      <textarea id="set-missions" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Objectives (Line 2)</h2>
+      <textarea id="set-objectives" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Points of Contact (Lines 5 &amp; 6)</h2>
+      <textarea id="set-pocs" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Locations (Lines 11 &amp; 13)</h2>
+      <textarea id="set-locations" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Default Text</h2>
+      <div class="field">
+        <label>Line 4 &mdash; Supported Agency (default)</label>
+        <input type="text" id="set-agencyDefault">
+      </div>
+      <div class="field">
+        <label>Line 9 &mdash; # of Boats (default)</label>
+        <input type="text" id="set-boatsDefault">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Units &amp; Rosters (Line 3 + Line 14)</h2>
+      <div id="unitsEditor"></div>
+      <button class="btn secondary block" id="addUnitBtn" type="button">+ Add Unit</button>
+    </div>
+
+    <div class="card">
+      <div class="settings-actions">
+        <button class="btn block" id="saveSettingsBtn" type="button">Save Settings</button>
+        <button class="btn danger" id="resetBtn" type="button">Reset to Defaults</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Share Your Lists</h2>
+      <p class="hint">Download a new copy of this app with everything above built in as the starting lists. Send that file to someone else and they'll have your Missions, Units, Drivers, TCs, POCs, etc. right away &mdash; no setup needed on their end.</p>
+      <button class="btn block" id="exportAppBtn" type="button">Download Shareable App (with your data)</button>
+    </div>
+
+    <div class="card">
+      <h2>Backup / Restore Data Only</h2>
+      <p class="hint">Save just your lists as a small JSON file, or load someone else's JSON file into this copy of the app.</p>
+      <div class="settings-actions">
+        <button class="btn secondary" id="exportBtn" type="button">Export Backup (.json)</button>
+        <button class="btn secondary" id="importBtn" type="button">Import Backup (.json)</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json" class="hidden">
+    </div>
+
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // Captured before any DOM mutation happens, so it's the pristine, un-filled-in
+  // page. Used by "Export Shareable App" to bake the current data in as the
+  // new default and hand out a self-contained file.
+  var ORIGINAL_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+
+  var STORAGE_KEY = "missionReportData_v1";
+
+  // ===DEFAULT_DATA_START===
+  var DEFAULT_DATA = {
+    missionNames: ["Mission Alpha", "Mission Bravo", "Mission Charlie"],
+    missions: ["Convoy Security", "Personnel Recovery", "Logistics Support"],
+    objectives: ["Escort", "Reconnaissance", "Resupply"],
+    pocs: ["John Doe - 555-0101", "Jane Roe - 555-0102"],
+    locations: ["FOB Alpha", "Camp Bravo", "Site Charlie"],
+    agencyDefault: "N/A",
+    boatsDefault: "0",
+    units: [
+      { name: "1st Squad", drivers: ["Smith", "Johnson", "Lee"], tcs: ["Garcia", "Brown", "Davis"] },
+      { name: "2nd Squad", drivers: ["Wilson", "Martinez"], tcs: ["Anderson", "Taylor"] }
+    ]
+  };
+  // ===DEFAULT_DATA_END===
+
+  // Paste your Firebase project's config here (Firebase Console -> Project
+  // Settings -> General -> Your apps -> SDK setup and configuration).
+  // This same object must also be pasted into driver_submit.html so both
+  // files talk to the same shared database. Leave as-is to use the app
+  // without the Submissions tab.
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB1sX5OH36mtFqBJ2795kM7_GEgCXvW2ts",
+    authDomain: "mission-report-submissions.firebaseapp.com",
+    projectId: "mission-report-submissions",
+    storageBucket: "mission-report-submissions.firebasestorage.app",
+    messagingSenderId: "592950698534",
+    appId: "1:592950698534:web:042b51232b84ebcc323ce7"
+  };
+
+  var data = loadData();
+  var entryCount = 0;
+
+  // ---------- persistence ----------
+  function loadData(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return JSON.parse(JSON.stringify(DEFAULT_DATA));
+      var parsed = JSON.parse(raw);
+      if(!parsed.units) parsed.units = [];
+      return parsed;
+    }catch(e){
+      return JSON.parse(JSON.stringify(DEFAULT_DATA));
+    }
+  }
+
+  function saveData(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function unitNames(){
+    return data.units.map(function(u){ return u.name; });
+  }
+
+  function findUnit(name){
+    if(!name) return null;
+    var lower = name.trim().toLowerCase();
+    for(var i=0;i<data.units.length;i++){
+      if(data.units[i].name.trim().toLowerCase() === lower) return data.units[i];
+    }
+    return null;
+  }
+
+  function getListValues(listKey){
+    if(listKey === "unitNames") return unitNames();
+    return data[listKey] || [];
+  }
+
+  function addToList(listKey, value){
+    value = (value || "").trim();
+    if(!value) return;
+
+    if(listKey === "unitNames"){
+      if(!findUnit(value)) data.units.push({ name: value, drivers: [], tcs: [] });
+      return;
+    }
+
+    var list = data[listKey];
+    if(!list) return;
+    var exists = list.some(function(v){ return v.trim().toLowerCase() === value.toLowerCase(); });
+    if(!exists) list.push(value);
+  }
+
+  // ---------- toast ----------
+  var toastEl = document.getElementById("toast");
+  var toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 1800);
+  }
+
+  // ---------- tabs ----------
+  var tabBtns = document.querySelectorAll(".tab-btn");
+  tabBtns.forEach(function(btn){
+    btn.addEventListener("click", function(){
+      tabBtns.forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      document.querySelectorAll("section.page").forEach(function(p){ p.classList.remove("active"); });
+      document.getElementById("page-" + btn.dataset.page).classList.add("active");
+      if(btn.dataset.page === "settings") renderSettings();
+    });
+  });
+
+  // ---------- combo component ----------
+  function buildCombo(container){
+    var listKey = container.dataset.list;
+    var onchangeName = container.dataset.onchange;
+    container.innerHTML = "";
+
+    var select = document.createElement("select");
+    select.className = "combo-select";
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "-- Select --";
+    select.appendChild(blank);
+
+    getListValues(listKey).forEach(function(val){
+      var opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = val;
+      select.appendChild(opt);
+    });
+
+    var customOpt = document.createElement("option");
+    customOpt.value = "__custom__";
+    customOpt.textContent = "+ Type custom value...";
+    select.appendChild(customOpt);
+
+    var customInput = document.createElement("input");
+    customInput.type = "text";
+    customInput.className = "custom-input hidden";
+    customInput.placeholder = "Type value";
+
+    select.addEventListener("change", function(){
+      if(select.value === "__custom__"){
+        customInput.classList.remove("hidden");
+        customInput.focus();
+      } else {
+        customInput.classList.add("hidden");
+      }
+      if(onchangeName && window.comboHandlers[onchangeName]){
+        window.comboHandlers[onchangeName]();
+      }
+    });
+
+    container.appendChild(select);
+    container.appendChild(customInput);
+  }
+
+  function getComboValue(container){
+    var select = container.querySelector("select");
+    var customInput = container.querySelector(".custom-input");
+    if(select.value === "__custom__"){
+      var val = customInput.value.trim();
+      var listKey = container.dataset.list;
+      if(val && listKey) addToList(listKey, val);
+      return val;
+    }
+    return select.value.trim();
+  }
+
+  // Sets a combo (select + custom input) to a remembered value, falling
+  // back to the custom-value input if it's not one of the current options.
+  function setComboValue(container, value){
+    if(!container || !value) return;
+    var select = container.querySelector("select");
+    var customInput = container.querySelector(".custom-input");
+    var hasOption = Array.prototype.some.call(select.options, function(o){ return o.value === value; });
+    if(hasOption){
+      select.value = value;
+      customInput.classList.add("hidden");
+    } else {
+      select.value = "__custom__";
+      customInput.value = value;
+      customInput.classList.remove("hidden");
+    }
+  }
+
+  function comboContainer(name){
+    return document.querySelector('.combo[data-combo="' + name + '"]');
+  }
+
+  window.comboHandlers = {
+    onUnitChange: function(){
+      refreshAllEntryRosters();
+    }
+  };
+
+  function initAllCombos(root){
+    (root || document).querySelectorAll(".combo").forEach(buildCombo);
+  }
+
+  // ---------- Line 14 entries (Names & Bumpers) ----------
+  var entriesContainer = document.getElementById("entries");
+
+  function currentUnitObj(){
+    var unitContainer = document.querySelector('.combo[data-combo="unit"]');
+    var select = unitContainer.querySelector("select");
+    var customInput = unitContainer.querySelector(".custom-input");
+    var name = select.value === "__custom__" ? customInput.value.trim() : select.value;
+    return findUnit(name);
+  }
+
+  function buildRosterSelect(selectEl, list, previousValue){
+    selectEl.innerHTML = "";
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "-- Select --";
+    selectEl.appendChild(blank);
+    (list || []).forEach(function(v){
+      var opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    var customOpt = document.createElement("option");
+    customOpt.value = "__custom__";
+    customOpt.textContent = "+ Type custom value...";
+    selectEl.appendChild(customOpt);
+    if(previousValue && list && list.indexOf(previousValue) !== -1){
+      selectEl.value = previousValue;
+    }
+  }
+
+  function addEntry(presetData){
+    entryCount++;
+    var id = entryCount;
+    var unit = currentUnitObj();
+
+    var wrap = document.createElement("div");
+    wrap.className = "entry";
+    wrap.dataset.entryId = id;
+    wrap.innerHTML =
+      '<div class="entry-head"><strong>Point / Vehicle #' + id + '</strong>' +
+      '<button type="button" class="btn danger remove-entry">Remove</button></div>' +
+      '<div class="field"><label>Point Name</label><input type="text" class="e-pointname"></div>' +
+      '<div class="field"><label>Plate</label><input type="text" class="e-plate"></div>' +
+      '<div class="field"><label>Driver</label>' +
+        '<select class="e-driver-select"></select>' +
+        '<input type="text" class="custom-input hidden e-driver-custom" placeholder="Type driver name"></div>' +
+      '<div class="field"><label>TC</label>' +
+        '<select class="e-tc-select"></select>' +
+        '<input type="text" class="custom-input hidden e-tc-custom" placeholder="Type TC name"></div>';
+
+    entriesContainer.appendChild(wrap);
+
+    var driverSelect = wrap.querySelector(".e-driver-select");
+    var driverCustom = wrap.querySelector(".e-driver-custom");
+    var tcSelect = wrap.querySelector(".e-tc-select");
+    var tcCustom = wrap.querySelector(".e-tc-custom");
+
+    buildRosterSelect(driverSelect, unit ? unit.drivers : []);
+    buildRosterSelect(tcSelect, unit ? unit.tcs : []);
+
+    driverSelect.addEventListener("change", function(){
+      driverCustom.classList.toggle("hidden", driverSelect.value !== "__custom__");
+      if(driverSelect.value === "__custom__") driverCustom.focus();
+    });
+    tcSelect.addEventListener("change", function(){
+      tcCustom.classList.toggle("hidden", tcSelect.value !== "__custom__");
+      if(tcSelect.value === "__custom__") tcCustom.focus();
+    });
+
+    wrap.querySelector(".remove-entry").addEventListener("click", function(){
+      wrap.remove();
+    });
+
+    if(presetData){
+      wrap.querySelector(".e-pointname").value = presetData.pointName || "";
+      wrap.querySelector(".e-plate").value = presetData.plate || "";
+      setRosterSelectValue(driverSelect, driverCustom, presetData.driver);
+      setRosterSelectValue(tcSelect, tcCustom, presetData.tc);
+    }
+
+    return wrap;
+  }
+
+  // Sets a driver/TC roster <select> to a remembered value, falling back to
+  // the custom-value input if that value isn't one of the current options.
+  function setRosterSelectValue(selectEl, customInputEl, value){
+    if(!value) return;
+    var hasOption = Array.prototype.some.call(selectEl.options, function(o){ return o.value === value; });
+    if(hasOption){
+      selectEl.value = value;
+      customInputEl.classList.add("hidden");
+    } else {
+      selectEl.value = "__custom__";
+      customInputEl.value = value;
+      customInputEl.classList.remove("hidden");
+    }
+  }
+
+  function refreshAllEntryRosters(){
+    var unit = currentUnitObj();
+    document.querySelectorAll(".entry").forEach(function(wrap){
+      var driverSelect = wrap.querySelector(".e-driver-select");
+      var tcSelect = wrap.querySelector(".e-tc-select");
+      var prevDriver = driverSelect.value !== "__custom__" ? driverSelect.value : "";
+      var prevTc = tcSelect.value !== "__custom__" ? tcSelect.value : "";
+      buildRosterSelect(driverSelect, unit ? unit.drivers : [], prevDriver);
+      buildRosterSelect(tcSelect, unit ? unit.tcs : [], prevTc);
+    });
+  }
+
+  document.getElementById("addEntryBtn").addEventListener("click", addEntry);
+
+  // ---------- Report generation ----------
+  function pad4(v){
+    v = (v || "").replace(/\D/g, "");
+    return v;
+  }
+
+  function comboVal(name){
+    var el = document.querySelector('.combo[data-combo="' + name + '"]');
+    return getComboValue(el);
+  }
+
+  function buildReportText(){
+    var title = comboVal("title");
+    var mission = comboVal("mission");
+    var objective = comboVal("objective");
+    var unit = comboVal("unit");
+    var agency = document.getElementById("agency").value.trim();
+    var primaryPOC = comboVal("primaryPOC");
+    var altPOC = comboVal("altPOC");
+
+    var lines = [];
+    lines.push("MISSION REPORT - " + title);
+    lines.push("Line 1 (Mission): " + mission);
+    lines.push("Line 2 (Objective): " + objective);
+    lines.push("Line 3 (Unit): " + unit);
+    lines.push("Line 4 (Supported Agency): " + agency);
+    lines.push("Line 5 (Primary POC): " + primaryPOC);
+    lines.push("Line 6 (Alternate POC): " + altPOC);
+    lines.push("Line 7 (# of PAX): " + (document.getElementById("pax").value || "0") + " PAX");
+    lines.push("Line 8 (# of Vehicles): " + (document.getElementById("vehicles").value || "0") + " NTVs");
+    lines.push("Line 9 (# of Boats): " + document.getElementById("boats").value.trim());
+    lines.push("Line 10 (Time of Departure): " + pad4(document.getElementById("tod").value));
+    lines.push("Line 11 (Departure Location): " + comboVal("depLoc"));
+    lines.push("Line 12 (ETA): " + pad4(document.getElementById("eta").value));
+    lines.push("Line 13 (Destination): " + comboVal("dest"));
+    lines.push("Line 14 (Names & Bumpers):");
+    lines.push("");
+
+    var unitObj = findUnit(unit);
+    var entrySnapshots = [];
+
+    document.querySelectorAll(".entry").forEach(function(wrap){
+      var pointName = wrap.querySelector(".e-pointname").value.trim();
+      var plate = wrap.querySelector(".e-plate").value.trim();
+      var driverSelect = wrap.querySelector(".e-driver-select");
+      var driverCustom = wrap.querySelector(".e-driver-custom");
+      var tcSelect = wrap.querySelector(".e-tc-select");
+      var tcCustom = wrap.querySelector(".e-tc-custom");
+
+      var driver = driverSelect.value === "__custom__" ? driverCustom.value.trim() : driverSelect.value;
+      var tc = tcSelect.value === "__custom__" ? tcCustom.value.trim() : tcSelect.value;
+
+      if(unitObj){
+        if(driverSelect.value === "__custom__" && driver && unitObj.drivers.indexOf(driver) === -1) unitObj.drivers.push(driver);
+        if(tcSelect.value === "__custom__" && tc && unitObj.tcs.indexOf(tc) === -1) unitObj.tcs.push(tc);
+      }
+
+      lines.push(pointName);
+      lines.push("Plate: " + plate);
+      lines.push("Driver: " + driver);
+      lines.push("TC: " + tc);
+      lines.push("");
+
+      entrySnapshots.push({ pointName: pointName, plate: plate, driver: driver, tc: tc });
+    });
+
+    lines.push("Line 15 (Time of Arrival): " + pad4(document.getElementById("toa").value));
+    lines.push("Line 16 (Green 2 at Arrival): GREEN");
+
+    // Remember these fields so the next new report opens pre-filled.
+    // Instance-specific fields (PAX, vehicles, boats, times, departure/destination)
+    // are intentionally left out so they're always entered fresh.
+    data.lastUsed = {
+      title: title,
+      mission: mission,
+      objective: objective,
+      unit: unit,
+      agency: agency,
+      primaryPOC: primaryPOC,
+      altPOC: altPOC,
+      entries: entrySnapshots
+    };
+
+    saveData();
+    return lines.join("\n");
+  }
+
+  document.getElementById("generateBtn").addEventListener("click", function(){
+    var text = buildReportText();
+    document.getElementById("preview").value = text;
+    var outputCard = document.getElementById("outputCard");
+    outputCard.style.display = "block";
+    if(typeof outputCard.scrollIntoView === "function"){
+      outputCard.scrollIntoView({behavior:"smooth", block:"start"});
+    }
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", function(){
+    var text = document.getElementById("preview").value;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ toast("Copied to clipboard"); })
+        .catch(function(){ fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  });
+
+  function fallbackCopy(text){
+    var ta = document.getElementById("preview");
+    ta.select();
+    try{ document.execCommand("copy"); toast("Copied to clipboard"); }
+    catch(e){ toast("Copy failed - select text manually"); }
+  }
+
+  document.getElementById("downloadBtn").addEventListener("click", function(){
+    var text = document.getElementById("preview").value;
+    var titleRaw = comboVal("title") || "mission_report";
+    var fname = titleRaw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "mission_report";
+    var blob = new Blob([text], {type: "text/plain"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = fname + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    toast("Downloaded");
+  });
+
+  // ---------- Settings page ----------
+  function renderSettings(){
+    document.getElementById("set-missionNames").value = (data.missionNames || []).join("\n");
+    document.getElementById("set-missions").value = (data.missions || []).join("\n");
+    document.getElementById("set-objectives").value = (data.objectives || []).join("\n");
+    document.getElementById("set-pocs").value = (data.pocs || []).join("\n");
+    document.getElementById("set-locations").value = (data.locations || []).join("\n");
+    document.getElementById("set-agencyDefault").value = data.agencyDefault || "";
+    document.getElementById("set-boatsDefault").value = data.boatsDefault || "";
+    renderUnitsEditor();
+  }
+
+  function renderUnitsEditor(){
+    var container = document.getElementById("unitsEditor");
+    container.innerHTML = "";
+    data.units.forEach(function(unit, idx){
+      var block = document.createElement("div");
+      block.className = "unit-block";
+      block.dataset.idx = idx;
+      block.innerHTML =
+        '<div class="entry-head"><strong>Unit</strong>' +
+        '<button type="button" class="btn danger remove-unit">Remove</button></div>' +
+        '<div class="field"><label>Unit Name</label><input type="text" class="u-name" value="' + escapeAttr(unit.name) + '"></div>' +
+        '<div class="field"><label>Drivers (one per line)</label><textarea class="u-drivers" rows="3">' + escapeHtml((unit.drivers||[]).join("\n")) + '</textarea></div>' +
+        '<div class="field"><label>TCs (one per line)</label><textarea class="u-tcs" rows="3">' + escapeHtml((unit.tcs||[]).join("\n")) + '</textarea></div>';
+      container.appendChild(block);
+      block.querySelector(".remove-unit").addEventListener("click", function(){
+        block.remove();
+      });
+    });
+  }
+
+  function escapeAttr(s){
+    return (s||"").replace(/"/g, "&quot;");
+  }
+  function escapeHtml(s){
+    return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  document.getElementById("addUnitBtn").addEventListener("click", function(){
+    var container = document.getElementById("unitsEditor");
+    var block = document.createElement("div");
+    block.className = "unit-block";
+    block.innerHTML =
+      '<div class="entry-head"><strong>Unit</strong>' +
+      '<button type="button" class="btn danger remove-unit">Remove</button></div>' +
+      '<div class="field"><label>Unit Name</label><input type="text" class="u-name"></div>' +
+      '<div class="field"><label>Drivers (one per line)</label><textarea class="u-drivers" rows="3"></textarea></div>' +
+      '<div class="field"><label>TCs (one per line)</label><textarea class="u-tcs" rows="3"></textarea></div>';
+    container.appendChild(block);
+    block.querySelector(".remove-unit").addEventListener("click", function(){
+      block.remove();
+    });
+  });
+
+  function linesToArray(str){
+    return (str || "").split("\n").map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+  }
+
+  function collectSettingsFromForm(){
+    data.missionNames = linesToArray(document.getElementById("set-missionNames").value);
+    data.missions = linesToArray(document.getElementById("set-missions").value);
+    data.objectives = linesToArray(document.getElementById("set-objectives").value);
+    data.pocs = linesToArray(document.getElementById("set-pocs").value);
+    data.locations = linesToArray(document.getElementById("set-locations").value);
+    data.agencyDefault = document.getElementById("set-agencyDefault").value.trim();
+    data.boatsDefault = document.getElementById("set-boatsDefault").value.trim();
+
+    var units = [];
+    document.querySelectorAll("#unitsEditor .unit-block").forEach(function(block){
+      var name = block.querySelector(".u-name").value.trim();
+      if(!name) return;
+      units.push({
+        name: name,
+        drivers: linesToArray(block.querySelector(".u-drivers").value),
+        tcs: linesToArray(block.querySelector(".u-tcs").value)
+      });
+    });
+    data.units = units;
+  }
+
+  document.getElementById("saveSettingsBtn").addEventListener("click", function(){
+    collectSettingsFromForm();
+    saveData();
+    refreshMainForm();
+    toast("Settings saved");
+  });
+
+  document.getElementById("exportAppBtn").addEventListener("click", function(){
+    collectSettingsFromForm();
+    saveData();
+
+    var startMarker = "// ===DEFAULT_DATA_START===";
+    var endMarker = "// ===DEFAULT_DATA_END===";
+    var startIdx = ORIGINAL_HTML.indexOf(startMarker);
+    var endIdx = ORIGINAL_HTML.indexOf(endMarker);
+
+    if(startIdx === -1 || endIdx === -1){
+      toast("Export failed - template markers not found");
+      return;
+    }
+
+    // Don't bake in this device's "last used" report - recipients should get
+    // a clean form, just with your lists/rosters as the starting options.
+    var exportData = {
+      missionNames: data.missionNames,
+      missions: data.missions,
+      objectives: data.objectives,
+      pocs: data.pocs,
+      locations: data.locations,
+      agencyDefault: data.agencyDefault,
+      boatsDefault: data.boatsDefault,
+      units: data.units
+    };
+
+    var newBlock = startMarker + "\n  var DEFAULT_DATA = " + JSON.stringify(exportData, null, 2) + ";\n  ";
+    var newHtml = ORIGINAL_HTML.slice(0, startIdx) + newBlock + ORIGINAL_HTML.slice(endIdx);
+
+    var blob = new Blob([newHtml], {type: "text/html"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "mission_report_app_prefilled.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    toast("Downloaded shareable copy");
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "mission_report_data_backup.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  });
+
+  document.getElementById("importBtn").addEventListener("click", function(){
+    document.getElementById("importFile").click();
+  });
+
+  document.getElementById("importFile").addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(evt){
+      try{
+        var parsed = JSON.parse(evt.target.result);
+        data = parsed;
+        if(!data.units) data.units = [];
+        saveData();
+        renderSettings();
+        refreshMainForm();
+        toast("Backup imported");
+      }catch(err){
+        toast("Invalid backup file");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    if(!confirm("Reset all dropdown data to defaults? This cannot be undone.")) return;
+    data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    saveData();
+    renderSettings();
+    refreshMainForm();
+    toast("Reset to defaults");
+  });
+
+  // ---------- refresh main form after settings change ----------
+  function refreshMainForm(){
+    initAllCombos(document.getElementById("page-report"));
+    document.getElementById("agency").value = data.agencyDefault || "";
+    document.getElementById("boats").value = data.boatsDefault || "";
+    entriesContainer.innerHTML = "";
+    entryCount = 0;
+    document.getElementById("outputCard").style.display = "none";
+    var banner = document.getElementById("lastUsedBanner");
+    if(banner) banner.style.display = "none";
+    if(!applyLastUsed()){
+      addEntry();
+    }
+  }
+
+  // ---------- init ----------
+  // Pre-fills Title, Mission, Objective, Unit, Agency, POCs, and the
+  // Names & Bumpers entries from the last report that was generated.
+  // PAX, Vehicles, Boats, times, and Departure/Destination are always
+  // left blank so they get entered fresh each time.
+  function applyLastUsed(){
+    var lu = data.lastUsed;
+    if(!lu) return false;
+
+    setComboValue(comboContainer("title"), lu.title);
+    setComboValue(comboContainer("mission"), lu.mission);
+    setComboValue(comboContainer("objective"), lu.objective);
+    setComboValue(comboContainer("unit"), lu.unit);
+    if(lu.agency) document.getElementById("agency").value = lu.agency;
+    setComboValue(comboContainer("primaryPOC"), lu.primaryPOC);
+    setComboValue(comboContainer("altPOC"), lu.altPOC);
+
+    if(lu.entries && lu.entries.length){
+      lu.entries.forEach(function(e){ addEntry(e); });
+    } else {
+      addEntry();
+    }
+
+    var banner = document.getElementById("lastUsedBanner");
+    if(banner) banner.style.display = "block";
+    return true;
+  }
+
+  document.getElementById("clearLastUsedBtn").addEventListener("click", function(){
+    delete data.lastUsed;
+    saveData();
+    location.reload();
+  });
+
+  // ---------- Submissions (driver hand-off via Firestore) ----------
+  var submissionsConfigured = FIREBASE_CONFIG.apiKey.indexOf("PASTE_YOUR") === -1;
+  var submissionsDb = null;
+  var suggestedPaxTotal = 0;
+  var suggestedVehicleCount = 0;
+
+  function initSubmissions(){
+    if(!submissionsConfigured || !window.firebase){
+      var warning = document.getElementById("submissionsConfigWarning");
+      if(warning) warning.style.display = "block";
+      return;
+    }
+
+    firebase.initializeApp(FIREBASE_CONFIG);
+    submissionsDb = firebase.firestore();
+
+    // Ordered by newest first. Filtering to unused submissions happens
+    // client-side (rather than a `where` clause) so this doesn't require
+    // setting up a composite index in Firestore.
+    submissionsDb.collection("submissions").orderBy("createdAt", "desc")
+      .onSnapshot(function(snapshot){
+        var docs = [];
+        snapshot.forEach(function(doc){
+          var d = doc.data();
+          if(!d.used) docs.push({ id: doc.id, data: d });
+        });
+        renderSubmissions(docs);
+      }, function(err){
+        var listEl = document.getElementById("submissionsList");
+        if(listEl) listEl.innerHTML = '<div class="empty-state">Couldn\'t load submissions: ' + escapeHtml(err.message) + '</div>';
+      });
+  }
+
+  function renderSubmissions(docs){
+    var listEl = document.getElementById("submissionsList");
+    var badge = document.getElementById("submissionsBadge");
+
+    if(badge){
+      if(docs.length > 0){
+        badge.textContent = docs.length;
+        badge.classList.remove("hidden");
+      } else {
+        badge.classList.add("hidden");
+      }
+    }
+
+    if(!listEl) return;
+
+    if(docs.length === 0){
+      listEl.innerHTML = '<div class="empty-state">Waiting for submissions...</div>';
+      return;
+    }
+
+    listEl.innerHTML = "";
+    docs.forEach(function(item){
+      var d = item.data;
+      var passengers = d.passengers && d.passengers.length ? d.passengers.join(", ") : "None listed";
+      var when = "";
+      if(d.createdAt && d.createdAt.toDate){
+        when = d.createdAt.toDate().toLocaleString();
+      }
+
+      var card = document.createElement("div");
+      card.className = "submission-card";
+      card.innerHTML =
+        (when ? '<div class="sub-time">' + escapeHtml(when) + '</div>' : "") +
+        '<div class="sub-row"><strong>Point:</strong> ' + escapeHtml(d.pointName || "(blank)") + '</div>' +
+        '<div class="sub-row"><strong>Plate:</strong> ' + escapeHtml(d.plate || "(blank)") + '</div>' +
+        '<div class="sub-row"><strong>Driver:</strong> ' + escapeHtml(d.driver || "(blank)") + '</div>' +
+        '<div class="sub-row"><strong>TC:</strong> ' + escapeHtml(d.tc || "(blank)") + '</div>' +
+        '<div class="sub-row"><strong>Passengers:</strong> ' + escapeHtml(passengers) + '</div>' +
+        '<div class="btn-row" style="margin-top:10px;">' +
+          '<button type="button" class="btn small add-to-report-btn">Add to Report</button>' +
+          '<button type="button" class="btn small secondary dismiss-btn">Dismiss</button>' +
+        '</div>';
+
+      card.querySelector(".add-to-report-btn").addEventListener("click", function(){
+        addSubmissionToReport(item.id, d);
+      });
+      card.querySelector(".dismiss-btn").addEventListener("click", function(){
+        markSubmissionUsed(item.id);
+        toast("Dismissed");
+      });
+
+      listEl.appendChild(card);
+    });
+  }
+
+  function addSubmissionToReport(id, d){
+    addEntry({ pointName: d.pointName, plate: d.plate, driver: d.driver, tc: d.tc });
+
+    var contribution = (d.driver ? 1 : 0) + (d.tc ? 1 : 0) + (d.passengers ? d.passengers.length : 0);
+    suggestedPaxTotal += contribution;
+    suggestedVehicleCount += 1;
+    updatePaxSuggestionUI();
+
+    markSubmissionUsed(id);
+    toast("Added to report");
+  }
+
+  function markSubmissionUsed(id){
+    if(!submissionsDb) return;
+    submissionsDb.collection("submissions").doc(id).update({ used: true }).catch(function(){});
+  }
+
+  function updatePaxSuggestionUI(){
+    var box = document.getElementById("paxSuggestion");
+    var text = document.getElementById("paxSuggestionText");
+    if(!box || !text) return;
+    if(suggestedVehicleCount === 0){
+      box.classList.remove("show");
+      return;
+    }
+    text.textContent = "Suggested PAX from " + suggestedVehicleCount + " added vehicle" +
+      (suggestedVehicleCount === 1 ? "" : "s") + ": " + suggestedPaxTotal;
+    box.classList.add("show");
+  }
+
+  var usePaxBtn = document.getElementById("usePaxSuggestionBtn");
+  if(usePaxBtn){
+    usePaxBtn.addEventListener("click", function(){
+      document.getElementById("pax").value = suggestedPaxTotal;
+      toast("PAX updated");
+    });
+  }
+
+  function init(){
+    initAllCombos(document.getElementById("page-report"));
+    document.getElementById("agency").value = data.agencyDefault || "";
+    document.getElementById("boats").value = data.boatsDefault || "";
+    if(!applyLastUsed()){
+      addEntry();
+    }
+    renderSettings();
+    initSubmissions();
+  }
+
+  init();
+
+})();
+</script>
+
+</body>
+</html>
