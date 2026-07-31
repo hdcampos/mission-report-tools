@@ -203,7 +203,7 @@
       </div>
       <div class="pax-suggestion" id="paxSuggestion">
         <span id="paxSuggestionText"></span>
-        <button class="btn small" id="usePaxSuggestionBtn" type="button">Use This</button>
+        <button class="btn small" id="usePaxSuggestionBtn" type="button">Use These Numbers</button>
       </div>
       <div class="field">
         <label>Line 9 &mdash; # of Boats</label>
@@ -684,23 +684,36 @@
       driverSelect.addEventListener("change", function(){
         driverCustom.classList.toggle("hidden", driverSelect.value !== "__custom__");
         if(driverSelect.value === "__custom__") driverCustom.focus();
+        updatePaxSuggestionUI();
       });
       tcSelect.addEventListener("change", function(){
         tcCustom.classList.toggle("hidden", tcSelect.value !== "__custom__");
         if(tcSelect.value === "__custom__") tcCustom.focus();
+        updatePaxSuggestionUI();
       });
+      driverCustom.addEventListener("input", updatePaxSuggestionUI);
+      tcCustom.addEventListener("input", updatePaxSuggestionUI);
 
       if(presetData){
         setRosterSelectValue(driverSelect, driverCustom, presetData.driver);
         setRosterSelectValue(tcSelect, tcCustom, presetData.tc);
       }
-    } else if(presetData){
-      wrap.querySelector(".e-driver-text").value = presetData.driver || "";
-      wrap.querySelector(".e-tc-text").value = presetData.tc || "";
+    } else {
+      var driverText = wrap.querySelector(".e-driver-text");
+      var tcText = wrap.querySelector(".e-tc-text");
+      driverText.addEventListener("input", updatePaxSuggestionUI);
+      tcText.addEventListener("input", updatePaxSuggestionUI);
+      if(presetData){
+        driverText.value = presetData.driver || "";
+        tcText.value = presetData.tc || "";
+      }
     }
+
+    wrap.querySelector(".e-passengers").addEventListener("input", updatePaxSuggestionUI);
 
     wrap.querySelector(".remove-entry").addEventListener("click", function(){
       wrap.remove();
+      updatePaxSuggestionUI();
     });
 
     if(presetData){
@@ -711,6 +724,7 @@
       }
     }
 
+    updatePaxSuggestionUI();
     return wrap;
   }
 
@@ -1051,8 +1065,6 @@
   // ---------- Submissions (driver hand-off via Firestore) ----------
   var submissionsConfigured = FIREBASE_CONFIG.apiKey.indexOf("PASTE_YOUR") === -1;
   var submissionsDb = null;
-  var suggestedPaxTotal = 0;
-  var suggestedVehicleCount = 0;
 
   function initSubmissions(){
     if(!submissionsConfigured || !window.firebase){
@@ -1141,13 +1153,8 @@
   }
 
   function addSubmissionToReport(id, d){
+    // addEntry() already recomputes the PAX/Vehicles suggestion once it's added.
     addEntry({ pointName: d.pointName, plate: d.plate, driver: d.driver, tc: d.tc, passengers: d.passengers });
-
-    var contribution = (d.driver ? 1 : 0) + (d.tc ? 1 : 0) + (d.passengers ? d.passengers.length : 0);
-    suggestedPaxTotal += contribution;
-    suggestedVehicleCount += 1;
-    updatePaxSuggestionUI();
-
     markSubmissionUsed(id);
     toast("Added to report");
   }
@@ -1157,24 +1164,54 @@
     submissionsDb.collection("submissions").doc(id).update({ used: true }).catch(function(){});
   }
 
+  // Each point in Names & Bumpers counts as one vehicle. PAX is the driver
+  // (if filled) + TC (if filled) + passengers, added up across every point.
+  function computeSuggestedTotals(){
+    var entries = document.querySelectorAll(".entry");
+    var vehicles = entries.length;
+    var pax = 0;
+
+    entries.forEach(function(wrap){
+      var driver, tc;
+      var driverSelect = wrap.querySelector(".e-driver-select");
+      if(driverSelect){
+        var driverCustom = wrap.querySelector(".e-driver-custom");
+        var tcSelect = wrap.querySelector(".e-tc-select");
+        var tcCustom = wrap.querySelector(".e-tc-custom");
+        driver = driverSelect.value === "__custom__" ? driverCustom.value.trim() : driverSelect.value;
+        tc = tcSelect.value === "__custom__" ? tcCustom.value.trim() : tcSelect.value;
+      } else {
+        driver = wrap.querySelector(".e-driver-text").value.trim();
+        tc = wrap.querySelector(".e-tc-text").value.trim();
+      }
+      var passengers = linesToArray(wrap.querySelector(".e-passengers").value);
+      pax += (driver ? 1 : 0) + (tc ? 1 : 0) + passengers.length;
+    });
+
+    return { vehicles: vehicles, pax: pax };
+  }
+
   function updatePaxSuggestionUI(){
     var box = document.getElementById("paxSuggestion");
     var text = document.getElementById("paxSuggestionText");
     if(!box || !text) return;
-    if(suggestedVehicleCount === 0){
+    var totals = computeSuggestedTotals();
+    if(totals.vehicles === 0){
       box.classList.remove("show");
       return;
     }
-    text.textContent = "Suggested PAX from " + suggestedVehicleCount + " added vehicle" +
-      (suggestedVehicleCount === 1 ? "" : "s") + ": " + suggestedPaxTotal;
+    text.textContent = "Suggested from " + totals.vehicles + " point" + (totals.vehicles === 1 ? "" : "s") +
+      ": " + totals.vehicles + " " + (totals.vehicles === 1 ? "vehicle" : "vehicles") + ", " + totals.pax + " PAX";
     box.classList.add("show");
   }
 
   var usePaxBtn = document.getElementById("usePaxSuggestionBtn");
   if(usePaxBtn){
     usePaxBtn.addEventListener("click", function(){
-      document.getElementById("pax").value = suggestedPaxTotal;
-      toast("PAX updated");
+      var totals = computeSuggestedTotals();
+      document.getElementById("pax").value = totals.pax;
+      document.getElementById("vehicles").value = totals.vehicles;
+      toast("PAX and Vehicles updated");
     });
   }
 
