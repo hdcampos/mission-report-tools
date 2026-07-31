@@ -383,6 +383,10 @@
     appId: "1:592950698534:web:042b51232b84ebcc323ce7"
   };
 
+  // Must match the passcode used in your Firestore security rules exactly,
+  // and must be the same value in driver_submit.html.
+  var TEAM_PASSCODE = "272272";
+
   var data = loadData();
   var entryCount = 0;
 
@@ -1032,10 +1036,14 @@
     firebase.initializeApp(FIREBASE_CONFIG);
     submissionsDb = firebase.firestore();
 
-    // Ordered by newest first. Filtering to unused submissions happens
-    // client-side (rather than a `where` clause) so this doesn't require
-    // setting up a composite index in Firestore.
-    submissionsDb.collection("submissions").orderBy("createdAt", "desc")
+    // Ordered by newest first, filtered to this team's passcode (required by
+    // the security rules for read access). Filtering to unused submissions
+    // happens separately, client-side. Note: combining a `where` on passcode
+    // with `orderBy` on createdAt needs a composite index - if you see an
+    // error in the Submissions tab the first time, it will include a direct
+    // link to create that index automatically; click it, wait about a
+    // minute, then reload.
+    submissionsDb.collection("submissions").where("passcode", "==", TEAM_PASSCODE).orderBy("createdAt", "desc")
       .onSnapshot(function(snapshot){
         var docs = [];
         snapshot.forEach(function(doc){
