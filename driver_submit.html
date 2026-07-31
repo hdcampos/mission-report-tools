@@ -34,12 +34,13 @@
   .field{margin-bottom:14px;}
   .field:last-child{margin-bottom:0;}
   label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px;}
-  input[type=text], textarea{
+  input[type=text], textarea, select{
     width:100%; background:var(--panel2); border:1px solid var(--border);
     color:var(--text); padding:12px 10px; border-radius:8px; font-size:16px;
     -webkit-appearance:none; appearance:none;
   }
   textarea{resize:vertical; min-height:80px; font-family:inherit;}
+  .custom-input{margin-top:8px;}
   .hint{font-size:12px; color:var(--muted); margin-top:4px;}
   .btn{
     display:block; width:100%; background:var(--accent); color:#fff; border:none;
@@ -89,11 +90,13 @@
   <div class="card hidden" id="formCard">
     <div class="field">
       <label>Point / Vehicle Name</label>
-      <input type="text" id="pointName" placeholder="e.g. Point 1, Lead, Trail">
+      <select id="pointNameSelect"></select>
+      <input type="text" class="custom-input hidden" id="pointNameCustom" placeholder="Type point name">
     </div>
     <div class="field">
       <label>License Plate</label>
-      <input type="text" id="plate">
+      <select id="plateSelect"></select>
+      <input type="text" class="custom-input hidden" id="plateCustom" placeholder="Type plate">
     </div>
     <div class="field">
       <label>Driver</label>
@@ -159,6 +162,59 @@
     statusEl.className = "status" + (type ? " " + type : "");
   }
 
+  // ---------- Point Name / Plate dropdowns (from the report builder's Settings) ----------
+  function buildCombo(selectEl, list){
+    selectEl.innerHTML = "";
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "-- Select --";
+    selectEl.appendChild(blank);
+    (list || []).forEach(function(v){
+      var opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    var customOpt = document.createElement("option");
+    customOpt.value = "__custom__";
+    customOpt.textContent = "+ Type custom value...";
+    selectEl.appendChild(customOpt);
+  }
+
+  function getComboValue(selectEl, customInputEl){
+    if(selectEl.value === "__custom__") return customInputEl.value.trim();
+    return selectEl.value.trim();
+  }
+
+  function wireCombo(selectEl, customInputEl){
+    selectEl.addEventListener("change", function(){
+      customInputEl.classList.toggle("hidden", selectEl.value !== "__custom__");
+      if(selectEl.value === "__custom__") customInputEl.focus();
+    });
+  }
+
+  var pointNameSelect = document.getElementById("pointNameSelect");
+  var pointNameCustom = document.getElementById("pointNameCustom");
+  var plateSelect = document.getElementById("plateSelect");
+  var plateCustom = document.getElementById("plateCustom");
+
+  // Start with just the custom option so the form is usable even before (or
+  // if) the lists load from the shared inbox.
+  buildCombo(pointNameSelect, []);
+  buildCombo(plateSelect, []);
+  wireCombo(pointNameSelect, pointNameCustom);
+  wireCombo(plateSelect, plateCustom);
+
+  if(db){
+    db.collection("sharedLists").doc("current").get().then(function(doc){
+      var lists = doc.exists ? doc.data() : {};
+      buildCombo(pointNameSelect, lists.pointNames || []);
+      buildCombo(plateSelect, lists.plates || []);
+    }).catch(function(){
+      // Lists just won't be pre-filled; "+ Type custom value..." still works.
+    });
+  }
+
   // ---------- team code gate ----------
   var codeStatusEl = document.getElementById("codeStatus");
   var teamCodeInput = document.getElementById("teamCode");
@@ -193,8 +249,12 @@
   }
 
   function clearForm(){
-    document.getElementById("pointName").value = "";
-    document.getElementById("plate").value = "";
+    pointNameSelect.value = "";
+    pointNameCustom.value = "";
+    pointNameCustom.classList.add("hidden");
+    plateSelect.value = "";
+    plateCustom.value = "";
+    plateCustom.classList.add("hidden");
     document.getElementById("driver").value = "";
     document.getElementById("tc").value = "";
     document.getElementById("passengers").value = "";
@@ -206,8 +266,8 @@
       return;
     }
 
-    var pointName = document.getElementById("pointName").value.trim();
-    var plate = document.getElementById("plate").value.trim();
+    var pointName = getComboValue(pointNameSelect, pointNameCustom);
+    var plate = getComboValue(plateSelect, plateCustom);
     var driver = document.getElementById("driver").value.trim();
     var tc = document.getElementById("tc").value.trim();
     var passengers = linesToArray(document.getElementById("passengers").value);

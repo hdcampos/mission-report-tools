@@ -341,6 +341,18 @@
     </div>
 
     <div class="card">
+      <h2>Point Names (Driver Submission Form)</h2>
+      <p class="hint" style="margin-bottom:8px;">Drivers pick from this list when submitting a vehicle. Saving Settings pushes this list to the shared inbox so it shows up on their form.</p>
+      <textarea id="set-pointNames" rows="4"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>License Plates (Driver Submission Form)</h2>
+      <p class="hint" style="margin-bottom:8px;">Same idea as Point Names above &mdash; drivers pick their plate from this list instead of typing it.</p>
+      <textarea id="set-plates" rows="4"></textarea>
+    </div>
+
+    <div class="card">
       <div class="settings-actions">
         <button class="btn block" id="saveSettingsBtn" type="button">Save Settings</button>
         <button class="btn danger" id="resetBtn" type="button">Reset to Defaults</button>
@@ -392,7 +404,9 @@
     agencyDefault: "N/A",
     boatsDefault: "0",
     units: ["1st Squad", "2nd Squad"],
-    leaders: ["Smith", "Johnson", "Lee", "Garcia", "Brown", "Davis"]
+    leaders: ["Smith", "Johnson", "Lee", "Garcia", "Brown", "Davis"],
+    pointNames: ["Point 1", "Point 2", "Point 3", "Lead", "Trail"],
+    plates: []
   };
   // ===DEFAULT_DATA_END===
 
@@ -461,27 +475,34 @@
   var entryCount = 0;
 
   // ---------- persistence ----------
+
+  // Fills in any fields missing from an older save/backup and migrates the
+  // old per-unit { name, drivers, tcs } shape (from before Units and
+  // Driver/TC rosters were split apart) into plain unit name strings,
+  // folding any existing drivers/tcs into the shared Leaders list so
+  // nothing is lost. Used for both localStorage loads and JSON imports.
+  function normalizeData(parsed){
+    if(!parsed.units) parsed.units = [];
+    if(!parsed.leaders) parsed.leaders = [];
+    if(!parsed.pointNames) parsed.pointNames = [];
+    if(!parsed.plates) parsed.plates = [];
+
+    if(parsed.units.length && typeof parsed.units[0] === "object"){
+      parsed.units.forEach(function(u){
+        (u.drivers || []).forEach(function(n){ if(parsed.leaders.indexOf(n) === -1) parsed.leaders.push(n); });
+        (u.tcs || []).forEach(function(n){ if(parsed.leaders.indexOf(n) === -1) parsed.leaders.push(n); });
+      });
+      parsed.units = parsed.units.map(function(u){ return u.name; });
+    }
+
+    return parsed;
+  }
+
   function loadData(){
     try{
       var raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return JSON.parse(JSON.stringify(DEFAULT_DATA));
-      var parsed = JSON.parse(raw);
-      if(!parsed.units) parsed.units = [];
-      if(!parsed.leaders) parsed.leaders = [];
-
-      // Migrate the old per-unit { name, drivers, tcs } shape (from before
-      // Units and Driver/TC rosters were split apart) into plain unit name
-      // strings, folding any existing drivers/tcs into the new shared
-      // Leaders list so that data isn't lost.
-      if(parsed.units.length && typeof parsed.units[0] === "object"){
-        parsed.units.forEach(function(u){
-          (u.drivers || []).forEach(function(n){ if(parsed.leaders.indexOf(n) === -1) parsed.leaders.push(n); });
-          (u.tcs || []).forEach(function(n){ if(parsed.leaders.indexOf(n) === -1) parsed.leaders.push(n); });
-        });
-        parsed.units = parsed.units.map(function(u){ return u.name; });
-      }
-
-      return parsed;
+      return normalizeData(JSON.parse(raw));
     }catch(e){
       return JSON.parse(JSON.stringify(DEFAULT_DATA));
     }
@@ -895,6 +916,8 @@
     document.getElementById("set-boatsDefault").value = data.boatsDefault || "";
     document.getElementById("set-units").value = (data.units || []).join("\n");
     document.getElementById("set-leaders").value = (data.leaders || []).join("\n");
+    document.getElementById("set-pointNames").value = (data.pointNames || []).join("\n");
+    document.getElementById("set-plates").value = (data.plates || []).join("\n");
   }
 
   function linesToArray(str){
@@ -915,12 +938,15 @@
     data.boatsDefault = document.getElementById("set-boatsDefault").value.trim();
     data.units = linesToArray(document.getElementById("set-units").value);
     data.leaders = linesToArray(document.getElementById("set-leaders").value);
+    data.pointNames = linesToArray(document.getElementById("set-pointNames").value);
+    data.plates = linesToArray(document.getElementById("set-plates").value);
   }
 
   document.getElementById("saveSettingsBtn").addEventListener("click", function(){
     collectSettingsFromForm();
     saveData();
     refreshMainForm();
+    pushSharedLists();
     toast("Settings saved");
   });
 
@@ -949,7 +975,9 @@
       agencyDefault: data.agencyDefault,
       boatsDefault: data.boatsDefault,
       units: data.units,
-      leaders: data.leaders
+      leaders: data.leaders,
+      pointNames: data.pointNames,
+      plates: data.plates
     };
 
     var newBlock = startMarker + "\n  var DEFAULT_DATA = " + JSON.stringify(exportData, null, 2) + ";\n  ";
@@ -989,12 +1017,11 @@
     var reader = new FileReader();
     reader.onload = function(evt){
       try{
-        var parsed = JSON.parse(evt.target.result);
-        data = parsed;
-        if(!data.units) data.units = [];
+        data = normalizeData(JSON.parse(evt.target.result));
         saveData();
         renderSettings();
         refreshMainForm();
+        pushSharedLists();
         toast("Backup imported");
       }catch(err){
         toast("Invalid backup file");
@@ -1010,6 +1037,7 @@
     saveData();
     renderSettings();
     refreshMainForm();
+    pushSharedLists();
     toast("Reset to defaults");
   });
 
@@ -1075,6 +1103,7 @@
 
     firebase.initializeApp(FIREBASE_CONFIG);
     submissionsDb = firebase.firestore();
+    pushSharedLists();
 
     // Ordered by newest first, filtered to this team's passcode (required by
     // the security rules for read access). Filtering to unused submissions
@@ -1162,6 +1191,19 @@
   function markSubmissionUsed(id){
     if(!submissionsDb) return;
     submissionsDb.collection("submissions").doc(id).update({ used: true }).catch(function(){});
+  }
+
+  // Pushes Point Names and License Plates to a single shared Firestore doc
+  // so driver_submit.html can populate its dropdowns from them. Called
+  // whenever those lists might have changed (Save Settings, Import, Reset).
+  function pushSharedLists(){
+    if(!submissionsDb) return;
+    submissionsDb.collection("sharedLists").doc("current").set({
+      pointNames: data.pointNames || [],
+      plates: data.plates || [],
+      passcode: TEAM_PASSCODE,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(function(){});
   }
 
   // Each point in Names & Bumpers counts as one vehicle. PAX is the driver
