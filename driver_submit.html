@@ -58,6 +58,7 @@
     background:rgba(217,83,79,0.15); border:1px solid var(--danger); color:#f3a6a4;
     padding:12px; border-radius:8px; font-size:13px; margin-bottom:14px;
   }
+  .hidden{display:none !important;}
 </style>
 </head>
 <body>
@@ -76,7 +77,16 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="codeGateCard">
+    <div class="field">
+      <label>Team Code</label>
+      <input type="text" id="teamCode" inputmode="numeric" placeholder="Ask your point of contact for this code">
+    </div>
+    <button class="btn" id="continueBtn" type="button">Continue</button>
+    <div class="status" id="codeStatus"></div>
+  </div>
+
+  <div class="card hidden" id="formCard">
     <div class="field">
       <label>Point / Vehicle Name</label>
       <input type="text" id="pointName" placeholder="e.g. Point 1, Lead, Trail">
@@ -148,6 +158,35 @@
     statusEl.textContent = msg;
     statusEl.className = "status" + (type ? " " + type : "");
   }
+
+  // ---------- team code gate ----------
+  var codeStatusEl = document.getElementById("codeStatus");
+  var teamCodeInput = document.getElementById("teamCode");
+
+  function setCodeStatus(msg, type){
+    codeStatusEl.textContent = msg;
+    codeStatusEl.className = "status" + (type ? " " + type : "");
+  }
+
+  function tryContinue(){
+    var entered = teamCodeInput.value.trim();
+    if(!entered){
+      setCodeStatus("Enter the code your point of contact gave you.", "error");
+      return;
+    }
+    if(entered !== TEAM_PASSCODE){
+      setCodeStatus("That code isn't right. Double check with your point of contact.", "error");
+      return;
+    }
+    setCodeStatus("", "");
+    document.getElementById("codeGateCard").classList.add("hidden");
+    document.getElementById("formCard").classList.remove("hidden");
+  }
+
+  document.getElementById("continueBtn").addEventListener("click", tryContinue);
+  teamCodeInput.addEventListener("keydown", function(e){
+    if(e.key === "Enter") tryContinue();
+  });
 
   function linesToArray(str){
     return (str || "").split("\n").map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
