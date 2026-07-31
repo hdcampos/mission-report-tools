@@ -124,6 +124,10 @@
   };
   // ===FIREBASE_CONFIG_END===
 
+  // Must match the passcode used in your Firestore security rules exactly,
+  // and must be the same value in mission_report_app.html.
+  var TEAM_PASSCODE = "272272";
+
   var isConfigured = FIREBASE_CONFIG.apiKey.indexOf("PASTE_YOUR") === -1;
 
   var submitBtn = document.getElementById("submitBtn");
@@ -184,6 +188,7 @@
       tc: tc,
       passengers: passengers,
       used: false,
+      passcode: TEAM_PASSCODE,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function(){
       setStatus("Submitted. Thank you — you can submit another vehicle if needed.", "success");
