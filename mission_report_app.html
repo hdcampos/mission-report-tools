@@ -601,7 +601,9 @@
         '<input type="text" class="custom-input hidden e-driver-custom" placeholder="Type driver name"></div>' +
       '<div class="field"><label>TC</label>' +
         '<select class="e-tc-select"></select>' +
-        '<input type="text" class="custom-input hidden e-tc-custom" placeholder="Type TC name"></div>';
+        '<input type="text" class="custom-input hidden e-tc-custom" placeholder="Type TC name"></div>' +
+      '<div class="field"><label>Other Passengers</label>' +
+        '<textarea class="e-passengers" rows="3" placeholder="One name per line"></textarea></div>';
 
     entriesContainer.appendChild(wrap);
 
@@ -631,6 +633,9 @@
       wrap.querySelector(".e-plate").value = presetData.plate || "";
       setRosterSelectValue(driverSelect, driverCustom, presetData.driver);
       setRosterSelectValue(tcSelect, tcCustom, presetData.tc);
+      if(presetData.passengers && presetData.passengers.length){
+        wrap.querySelector(".e-passengers").value = presetData.passengers.join("\n");
+      }
     }
 
     return wrap;
@@ -716,6 +721,7 @@
 
       var driver = driverSelect.value === "__custom__" ? driverCustom.value.trim() : driverSelect.value;
       var tc = tcSelect.value === "__custom__" ? tcCustom.value.trim() : tcSelect.value;
+      var passengers = linesToArray(wrap.querySelector(".e-passengers").value);
 
       if(unitObj){
         if(driverSelect.value === "__custom__" && driver && unitObj.drivers.indexOf(driver) === -1) unitObj.drivers.push(driver);
@@ -726,9 +732,10 @@
       lines.push("Plate: " + plate);
       lines.push("Driver: " + driver);
       lines.push("TC: " + tc);
+      lines.push("Passengers: " + (passengers.length ? passengers.join(", ") : "None"));
       lines.push("");
 
-      entrySnapshots.push({ pointName: pointName, plate: plate, driver: driver, tc: tc });
+      entrySnapshots.push({ pointName: pointName, plate: plate, driver: driver, tc: tc, passengers: passengers });
     });
 
     lines.push("Line 15 (Time of Arrival): " + pad4(document.getElementById("toa").value));
@@ -1113,7 +1120,7 @@
   }
 
   function addSubmissionToReport(id, d){
-    addEntry({ pointName: d.pointName, plate: d.plate, driver: d.driver, tc: d.tc });
+    addEntry({ pointName: d.pointName, plate: d.plate, driver: d.driver, tc: d.tc, passengers: d.passengers });
 
     var contribution = (d.driver ? 1 : 0) + (d.tc ? 1 : 0) + (d.passengers ? d.passengers.length : 0);
     suggestedPaxTotal += contribution;
