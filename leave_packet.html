@@ -783,6 +783,31 @@
   }
 
   // ---------------------------------------------------------------
+  // CAC signature fields. pdf-lib has no API for creating these, so the
+  // field/widget dictionary is built by hand. Adobe Acrobat/Reader shows
+  // them as "click to sign". Rects are [left, top, right, bottom] in points
+  // from the top-left of the page.
+  // ---------------------------------------------------------------
+  var RAPTOR_SIG_FIELD = [114, 530, 341, 549];     // the whole "Soldier:" line
+  var DA_SIG_FIELD = [19, 395, 536.5, 419.8];      // box 11, below its label
+
+  function addSigField(doc, page, name, r){
+    var ctx = doc.context;
+    var w = r[2] - r[0], h = r[3] - r[1];
+    var ap = ctx.register(ctx.stream("", {
+      Type: "XObject", Subtype: "Form", BBox: [0, 0, w, h], Resources: {}
+    }));
+    var widget = ctx.register(ctx.obj({
+      Type: "Annot", Subtype: "Widget", FT: "Sig",
+      T: PDFLib.PDFString.of(name), TU: PDFLib.PDFString.of(name),
+      Rect: [r[0], PAGE_H - r[3], r[2], PAGE_H - r[1]],
+      F: 4, P: page.ref, AP: { N: ap }
+    }));
+    page.node.addAnnot(widget);
+    doc.getForm().acroForm.addField(widget);
+  }
+
+  // ---------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------
   var resultUrl = null, resultName = "";
@@ -806,6 +831,9 @@
         if (files[j].file.type.indexOf("image/") === 0) await appendImage(out, files[j].file);
         else await appendPdf(out, files[j].file);
       }
+      // Empty CAC signature fields, added last so they belong to the final document
+      addSigField(out, out.getPage(0), "Soldier Signature", RAPTOR_SIG_FIELD);
+      addSigField(out, out.getPage(1), "Requestor Signature", DA_SIG_FIELD);
       out.setTitle("Leave Packet - " + val("name"));
       var bytes = await out.save();
       if (resultUrl) URL.revokeObjectURL(resultUrl);
