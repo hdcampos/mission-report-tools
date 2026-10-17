@@ -30,6 +30,7 @@
   }
   input[type=date]{color-scheme:dark;}
   select:focus,input:focus,textarea:focus{outline:none; border-color:var(--accent);}
+  input[readonly]{background:var(--bg); color:var(--muted); border-style:dashed; pointer-events:none;}
   textarea{min-height:90px; resize:vertical; line-height:1.45;}
   .field{margin-bottom:14px;}
   .row{display:flex; gap:10px;}
@@ -186,13 +187,13 @@
       <input id="from9" type="date">
     </div>
     <div class="field">
-      <label for="to9">9c. To</label>
-      <input id="to9" type="date">
+      <label for="days9">9b. Total days requested</label>
+      <input id="days9" type="number" min="1" step="1" inputmode="numeric">
     </div>
   </div>
   <div class="field">
-    <label for="days9">9b. Total days requested</label>
-    <input id="days9" inputmode="decimal">
+    <label for="to9">9c. To (calculated from 9a and 9b)</label>
+    <input id="to9" type="date" readonly tabindex="-1">
   </div>
 
   <div class="field">
@@ -452,19 +453,30 @@
     return d > 0 ? String(d) : "";
   }
 
+  // 9c = 9a + 9b days, counting the start day ("from 23 OCT, 4 days" ends 26 OCT).
+  // Computed in UTC so daylight-saving changes can't shift the date.
+  function endDate(fromIso, days){
+    var n = Number(days);
+    if (!fromIso || !(n >= 1) || Math.floor(n) !== n) return "";
+    var p = fromIso.split("-");
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]) + (n - 1) * 86400000);
+    return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate());
+  }
+  function syncTo9(){ $("to9").value = endDate($("from9").value, $("days9").value); }
+  ["from9", "days9"].forEach(function(id){ $(id).addEventListener("input", syncTo9); });
+
   var touched = {};
-  ["days9", "days10b", "days10c"].forEach(function(id){
+  ["days10b", "days10c"].forEach(function(id){
     $(id).addEventListener("input", function(){ touched[id] = true; });
   });
   function autoDays(daysId, fromId, toId){
     if (!touched[daysId]) $(daysId).value = dayCount($(fromId).value, $(toId).value);
   }
   function syncDates(){
-    autoDays("days9", "from9", "to9");
     autoDays("days10b", "from10b", "to10b");
     autoDays("days10c", "from10c", "to10c");
   }
-  ["from9", "to9", "from10b", "to10b", "from10c", "to10c"].forEach(function(id){
+  ["from10b", "to10b", "from10c", "to10c"].forEach(function(id){
     $(id).addEventListener("input", syncDates);
   });
 
