@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Leave Packet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1720; --panel:#1a2430; --panel2:#212d3b; --border:#2e3d4d;
+    --text:#e8edf2; --muted:#8fa1b3; --accent:#3d8bfd; --ok:#2fa36b; --bad:#e5534b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh; padding:20px;
+  }
+  main{max-width:520px; width:100%; margin:0 auto;}
+  a.back{color:var(--muted); font-size:13px; text-decoration:none; display:inline-block; margin-bottom:14px;}
+  a.back:active{color:var(--text);}
+  h1{font-size:20px; margin:0 0 6px;}
+  p.sub{color:var(--muted); font-size:14px; margin:0 0 8px;}
+  p.hint{color:var(--muted); font-size:12.5px; margin:-4px 0 12px; line-height:1.45;}
+  label{display:block; font-size:12px; color:var(--muted); margin:0 0 6px; font-weight:600;}
+  select,input,textarea{
+    width:100%; background:var(--panel); color:var(--text); font-size:16px;
+    border:1px solid var(--border); border-radius:10px; padding:12px;
+    font-family:inherit; -webkit-appearance:none; appearance:none; min-height:46px;
+  }
+  input[type=date]{color-scheme:dark;}
+  select:focus,input:focus,textarea:focus{outline:none; border-color:var(--accent);}
+  textarea{min-height:90px; resize:vertical; line-height:1.45;}
+  .field{margin-bottom:14px;}
+  .row{display:flex; gap:10px;}
+  .row > .field{flex:1; min-width:0;}
+  h2.section{
+    font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--accent); margin:30px 0 12px;
+  }
+  .seg{display:flex; gap:6px; margin-bottom:14px;}
+  .seg label{
+    flex:1; margin:0; text-align:center; padding:11px 4px; border:1px solid var(--border);
+    border-radius:10px; background:var(--panel); color:var(--muted); font-size:12px; cursor:pointer;
+  }
+  .seg input{display:none;}
+  .seg input:checked + span{color:var(--text);}
+  .seg label.on{border-color:var(--accent); background:var(--panel2); color:var(--text);}
+  .checks{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;}
+  .checks label, label.check{
+    display:flex; align-items:center; gap:8px; margin:0; padding:10px; font-size:13px; font-weight:500;
+    color:var(--text); background:var(--panel); border:1px solid var(--border); border-radius:10px; cursor:pointer;
+  }
+  .checks input, label.check input{width:18px; height:18px; min-height:0; margin:0; flex:none; -webkit-appearance:auto; appearance:auto; accent-color:var(--accent);}
+  .sigwrap{background:#fff; border-radius:10px; position:relative; touch-action:none;}
+  canvas#sig{display:block; width:100%; height:130px; border-radius:10px;}
+  .sigline{position:absolute; left:16px; right:16px; bottom:30px; border-bottom:1px solid #c5ccd3; pointer-events:none;}
+  .sigx{position:absolute; left:16px; bottom:34px; color:#9aa5b1; font-size:15px; pointer-events:none;}
+  .drop{
+    border:1.5px dashed var(--border); border-radius:12px; padding:22px 14px; text-align:center;
+    color:var(--muted); font-size:14px; cursor:pointer; background:var(--panel); margin-bottom:12px;
+  }
+  .drop.over{border-color:var(--accent); color:var(--text);}
+  .drop strong{color:var(--accent);}
+  ul.files{list-style:none; margin:0 0 12px; padding:0;}
+  ul.files li{
+    display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; padding:8px 8px 8px 12px; margin-bottom:8px; font-size:13px;
+  }
+  ul.files li.fixed{color:var(--muted);}
+  ul.files .name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  ul.files .meta{color:var(--muted); font-size:11.5px; white-space:nowrap;}
+  ul.files button{
+    flex:none; width:34px; height:34px; padding:0; font-size:15px; border-radius:8px;
+    background:var(--panel2); color:var(--text); border:1px solid var(--border); cursor:pointer;
+  }
+  ul.files button:disabled{opacity:.3; cursor:default;}
+  button.btn{
+    width:100%; font-size:15px; font-weight:600; font-family:inherit; padding:14px;
+    border-radius:10px; border:1px solid var(--border); cursor:pointer; background:var(--panel); color:var(--text);
+  }
+  button.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  button.btn.ok{background:var(--ok); border-color:var(--ok); color:#fff;}
+  button.btn.small{width:auto; padding:8px 12px; font-size:13px; color:var(--muted);}
+  button.btn:disabled{opacity:.6; cursor:wait;}
+  button.btn:active{opacity:.85;}
+  .status{font-size:13px; margin:10px 0 0; color:var(--muted); min-height:18px; line-height:1.45;}
+  .status.err{color:var(--bad);}
+  .status.good{color:var(--ok);}
+  #result{display:none; margin-top:12px;}
+  #result .row{margin-top:10px;}
+  .hidden{display:none !important;}
+  .lock{max-width:420px; width:100%; margin:12vh auto 0;}
+</style>
+</head>
+<body>
+<div id="lock" class="lock">
+  <a class="back" href="index.html">&larr; Back</a>
+  <h1>Leave / Pass Packet</h1>
+  <p class="sub">Enter the password to continue.</p>
+  <form id="lockForm" autocomplete="off">
+    <div class="field">
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" autofocus>
+    </div>
+    <button class="btn primary" id="unlock" type="submit">Unlock</button>
+    <div class="status" id="lockStatus"></div>
+  </form>
+</div>
+
+<main id="app" class="hidden">
+  <a class="back" href="index.html">&larr; Back</a>
+  <h1>Leave / Pass Packet</h1>
+  <p class="sub">Fills out the DA 31 and the TF Raptor Soldier Action Form, adds your supporting documents, and gives you one PDF.</p>
+  <p class="hint">Everything stays on your device. Nothing you type or attach is uploaded.</p>
+
+  <!-- ===================== SOLDIER ===================== -->
+  <h2 class="section">Soldier</h2>
+  <div class="field">
+    <label for="name">Name (Last, First, Middle Initial)</label>
+    <input id="name" autocomplete="name" placeholder="DOE, JOHN A">
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="rank">Rank</label>
+      <input id="rank" placeholder="SPC">
+    </div>
+    <div class="field">
+      <label for="dodid">DoD ID</label>
+      <input id="dodid" inputmode="numeric" placeholder="1234567890">
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="phone">Phone</label>
+      <input id="phone" type="tel" autocomplete="tel">
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email">
+    </div>
+  </div>
+  <label>Unit</label>
+  <div class="checks" id="unitChecks"></div>
+  <div class="field">
+    <label for="reqDate">Date of request</label>
+    <input id="reqDate" type="date">
+  </div>
+
+  <!-- ===================== DA 31 ===================== -->
+  <h2 class="section">DA 31 &mdash; Leave</h2>
+  <div class="field">
+    <label for="leaveAddr">6. Leave address (street, city, state, ZIP and phone)</label>
+    <textarea id="leaveAddr" rows="3"></textarea>
+  </div>
+  <p class="hint">Box 7 (organization, station, POC) is pre-printed on the form.</p>
+
+  <label>8. Type of absence</label>
+  <div class="seg" id="catSeg">
+    <label><input type="radio" name="cat" value="chargeable"><span>Chargeable</span></label>
+    <label><input type="radio" name="cat" value="nonchargeable" checked><span>Non-chargeable</span></label>
+    <label><input type="radio" name="cat" value="combination"><span>Combination</span></label>
+  </div>
+  <div class="field">
+    <select id="absType"></select>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="from9">9a. From</label>
+      <input id="from9" type="date">
+    </div>
+    <div class="field">
+      <label for="to9">9c. To</label>
+      <input id="to9" type="date">
+    </div>
+  </div>
+  <div class="field">
+    <label for="days9">9b. Total days requested</label>
+    <input id="days9" inputmode="decimal">
+  </div>
+
+  <div class="field">
+    <label for="accrued">10a. Accrued leave (CR BAL)</label>
+    <input id="accrued" inputmode="decimal">
+  </div>
+  <p class="hint">Box 10b or 10c copies from box 9 based on the type above. Change any of them if needed.</p>
+  <label>10b. Chargeable leave requested</label>
+  <div class="row">
+    <div class="field"><input id="from10b" type="date" aria-label="10b from"></div>
+    <div class="field"><input id="to10b" type="date" aria-label="10b to"></div>
+  </div>
+  <div class="row">
+    <div class="field"><input id="days10b" inputmode="decimal" placeholder="Days" aria-label="10b days requested"></div>
+    <div class="field"><input id="adv10b" inputmode="decimal" placeholder="Advance" aria-label="10b advance"></div>
+    <div class="field"><input id="exc10b" inputmode="decimal" placeholder="Excess" aria-label="10b excess"></div>
+  </div>
+  <label>10c. Non-chargeable absence requested</label>
+  <div class="row">
+    <div class="field"><input id="from10c" type="date" aria-label="10c from"></div>
+    <div class="field"><input id="to10c" type="date" aria-label="10c to"></div>
+  </div>
+  <div class="field"><input id="days10c" inputmode="decimal" placeholder="Days" aria-label="10c days requested"></div>
+
+  <!-- ===================== TF RAPTOR ===================== -->
+  <h2 class="section">TF Raptor Soldier Action Form</h2>
+  <label>Action</label>
+  <div class="checks" id="actionChecks"></div>
+  <div class="field">
+    <label for="other">Other</label>
+    <input id="other">
+  </div>
+  <div class="field">
+    <label for="actDates">Dates of requested action</label>
+    <input id="actDates" placeholder="Fills in from box 9">
+  </div>
+  <div class="field">
+    <label for="details">Details of requested action (event type, how long it has been scheduled, etc.)</label>
+    <textarea id="details" rows="4"></textarea>
+  </div>
+  <div class="field">
+    <label for="itinerary">Action taken by responsible SM (travel itinerary, etc.)</label>
+    <textarea id="itinerary" rows="4"></textarea>
+  </div>
+
+  <!-- ===================== SIGNATURE ===================== -->
+  <h2 class="section">Signature</h2>
+  <label class="check" style="margin-bottom:12px;"><input type="checkbox" id="signNow"> Sign now (DA 31 box 11 and the Soldier line)</label>
+  <p class="hint" id="signHint">Leave this unchecked to sign later with your CAC or in ink. The signature lines will stay blank.</p>
+  <div id="sigBlock" class="hidden">
+    <div class="sigwrap">
+      <canvas id="sig"></canvas>
+      <div class="sigline"></div><div class="sigx">&times;</div>
+    </div>
+    <div class="row" style="margin:8px 0 14px; justify-content:space-between; align-items:center;">
+      <span class="hint" style="margin:0;">Sign with your finger or mouse.</span>
+      <button class="btn small" id="sigClear" type="button">Clear</button>
+    </div>
+    <div class="field">
+      <label for="sigDate">Signature date</label>
+      <input id="sigDate" type="date">
+    </div>
+  </div>
+
+  <!-- ===================== ATTACHMENTS ===================== -->
+  <h2 class="section">Supporting documents</h2>
+  <div class="drop" id="drop">
+    <strong>Add files</strong> or drop them here<br>
+    <span style="font-size:12px;">PDFs or photos (JPG, PNG)</span>
+  </div>
+  <input type="file" id="fileInput" multiple accept="application/pdf,image/*,.pdf" class="hidden">
+  <ul class="files" id="fileList"></ul>
+
+  <!-- ===================== BUILD ===================== -->
+  <h2 class="section">Packet</h2>
+  <button class="btn primary" id="build" type="button">Create Packet PDF</button>
+  <div class="status" id="status"></div>
+  <div id="result">
+    <button class="btn ok" id="download" type="button">Download PDF</button>
+    <div class="row">
+      <button class="btn" id="openPdf" type="button">Open in new tab</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  var PDFLib = window.PDFLib;
+  var $ = function(id){ return document.getElementById(id); };
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  // The blank forms are stored encrypted (PBKDF2-SHA256 -> AES-256-GCM,
+  // layout: salt(16) | iv(12) | ciphertext+tag). The password is the key;
+  // it is not stored anywhere in this repo.
+  var DA31_URL = "forms/da31.pdf.enc";
+  var RAPTOR_URL = "forms/tf_raptor_action_form.pdf.enc";
+  var KDF_ITER = 600000;
+  var PAGE_H = 792; // both forms are US Letter
+  var blanks = {}; // decrypted form bytes, keyed by URL
+
+  async function unlock(pw){
+    var enc = await Promise.all([DA31_URL, RAPTOR_URL].map(function(u){
+      return fetch(u).then(function(r){
+        if (!r.ok) throw new Error("Couldn't load the forms (" + r.status + ").");
+        return r.arrayBuffer();
+      });
+    }));
+    var salt = new Uint8Array(enc[0], 0, 16);
+    var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+    var key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt: salt, iterations: KDF_ITER, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    var out = await Promise.all(enc.map(function(buf){
+      return crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(buf, 16, 12) }, key, new Uint8Array(buf, 28));
+    })); // throws on a wrong password
+    blanks[DA31_URL] = out[0];
+    blanks[RAPTOR_URL] = out[1];
+  }
+
+  var SESSION_KEY = "leavePacketPw";
+  async function tryUnlock(pw, quiet){
+    var ls = $("lockStatus"), ub = $("unlock");
+    ub.disabled = true; if (!quiet) { ls.textContent = "Checking…"; ls.className = "status"; }
+    try {
+      await unlock(pw);
+      try { sessionStorage.setItem(SESSION_KEY, pw); } catch (e) {}
+      $("lock").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      return true;
+    } catch (err) {
+      try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+      if (!quiet) {
+        ls.textContent = err && err.name === "OperationError" ? "Wrong password." : (err.message || "Couldn't unlock.");
+        ls.className = "status err";
+        $("pw").select();
+      }
+      return false;
+    } finally { ub.disabled = false; }
+  }
+  $("lockForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    if ($("pw").value) tryUnlock($("pw").value, false);
+  });
+  // Stay unlocked for the rest of this browser tab session
+  (function(){
+    var saved = null;
+    try { saved = sessionStorage.getItem(SESSION_KEY); } catch (e) {}
+    if (saved) tryUnlock(saved, true);
+  })();
+
+  // ---------------------------------------------------------------
+  // DA 31 layout. Coordinates are PDF points measured from the TOP-left
+  // of the page (converted with PAGE_H when drawing).
+  // ---------------------------------------------------------------
+  var CAT_BOXES = {
+    chargeable:    [32.8, 163.4],
+    nonchargeable: [112.6, 163.4],
+    combination:   [212.9, 163.4]
+  };
+  // [label, x, y] of each type-of-absence checkbox (10pt square)
+  var ABS_TYPES = [
+    ["PASS, Regular", 24.5, 183.0],
+    ["PASS, Special 3-Day", 24.5, 197.4],
+    ["PASS, Special 4-Day", 24.5, 211.9],
+    ["Convalescent Leave", 24.5, 226.3],
+    ["Maternity Convalescent Leave", 24.5, 240.8],
+    ["Parental Leave", 24.5, 255.4],
+    ["Bereavement Leave", 24.5, 269.8],
+    ["House Hunting", 142.6, 183.0],
+    ["Proceed Time (OCONUS Restricted PDS)", 142.6, 197.4],
+    ["Privately Owned Vehicle, Pick-up/Delivery", 142.6, 211.9],
+    ["Retirement or Involuntary Separation (ISAA)", 142.6, 226.3],
+    ["Transition Administrative Absence", 142.6, 240.8],
+    ["Transition Assistance Program (TAP) Seminar", 142.6, 255.4],
+    ["Career Skills Program", 142.6, 269.4],
+    ["Retirement Presiding Official", 142.6, 283.7],
+    ["Graduation Leave, Military Academies", 311.4, 183.0],
+    ["Graduation Leave, ROTC", 311.4, 197.4],
+    ["Recruiting Assistance Leave", 311.4, 211.9],
+    ["Competitive Sporting and Other Events", 311.4, 226.3],
+    ["Professional Development", 311.4, 240.8],
+    ["Professional Meetings", 311.4, 255.4],
+    ["Credit Union Board Meetings", 311.4, 269.8],
+    ["Excess Leave", 457.4, 183.0],
+    ["Legal Marriage", 457.4, 197.4],
+    ["Legal Witness/Jury Duty", 457.4, 211.9],
+    ["Non-medical Attendant", 457.4, 226.3],
+    ["Rest and Recuperation, Non-Chargeable", 457.4, 244.7],
+    ["Rest and Recuperation, Special", 457.4, 262.4],
+    ["Non-Covered Reproductive Health Care", 457.4, 280.7]
+  ];
+  var DEFAULT_ABS = "PASS, Special 4-Day";
+
+  // Text spots: [x, baselineY, maxWidth, align]
+  var DA = {
+    name:    [22, 79, 252, "left"],
+    dodid:   [281, 79, 126, "left"],
+    rank:    [413, 79, 86, "left"],
+    date:    [505, 79, 86, "left"],
+    addr:    [22, 106, 280],            // multi-line, 11pt leading, max 4 lines
+    from9:   [114, 322, 120, "center"],
+    days9:   [306, 322, 120, "center"],
+    to9:     [497, 322, 120, "center"],
+    accrued: [49.6, 368, 58, "center"],
+    from10b: [110, 368, 54, "center"],
+    days10b: [179.7, 368, 78, "center"],
+    to10b:   [249.6, 368, 54, "center"],
+    adv10b:  [307.4, 368, 54, "center"],
+    exc10b:  [365.2, 368, 54, "center"],
+    from10c: [423.6, 368, 56, "center"],
+    days10c: [495.3, 368, 80, "center"],
+    to10c:   [565.7, 368, 54, "center"],
+    sigDate: [565.7, 413, 54, "center"]
+  };
+  var DA_SIG_BOX = [160, 395, 370, 23]; // x, top, w, h for box 11 signature
+
+  // TF Raptor checkboxes (fillable field names)
+  var UNITS = [["272", "Check Box5"], ["822", "Check Box6"], ["65", "Check Box7"], ["BNMC", "Check Box8"]];
+  var ACTIONS = [
+    ["Pass Request", "Check Box1"], ["School (Military)", "Check Box2"],
+    ["School (Civilian)", "Check Box3"], ["Orders", "Check Box4"],
+    ["Supply", "Check Box13"], ["DTS/GTCC", "Check Box12"],
+    ["Promotion", "Check Box11"], ["Medical", "Check Box10"],
+    ["Cond. Release", "Check Box9"]
+  ];
+  var RAPTOR_SIG_BOX = [116, 532, 222, 16]; // over the "Soldier:" line
+
+  // ---------------------------------------------------------------
+  // Build the dynamic bits of the form
+  // ---------------------------------------------------------------
+  function buildChecks(container, list, name, defaults){
+    list.forEach(function(item){
+      var lab = document.createElement("label");
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.name = name; cb.value = item[1];
+      cb.checked = defaults.indexOf(item[0]) !== -1;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(item[0]));
+      container.appendChild(lab);
+    });
+  }
+  buildChecks($("unitChecks"), UNITS, "unit", []);
+  buildChecks($("actionChecks"), ACTIONS, "action", ["Pass Request"]);
+
+  var absSel = $("absType");
+  var none = document.createElement("option");
+  none.value = ""; none.textContent = "(no specific type checked)";
+  absSel.appendChild(none);
+  ABS_TYPES.forEach(function(t){
+    var o = document.createElement("option");
+    o.value = t[0]; o.textContent = t[0];
+    if (t[0] === DEFAULT_ABS) o.selected = true;
+    absSel.appendChild(o);
+  });
+
+  function todayISO(){
+    var d = new Date();
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function pad(n){ return (n < 10 ? "0" : "") + n; }
+  $("reqDate").value = todayISO();
+  $("sigDate").value = todayISO();
+
+  // Segmented control highlight
+  var catInputs = document.querySelectorAll("input[name=cat]");
+  function getCat(){
+    for (var i = 0; i < catInputs.length; i++) if (catInputs[i].checked) return catInputs[i].value;
+    return "";
+  }
+  function paintSeg(){
+    for (var i = 0; i < catInputs.length; i++) {
+      catInputs[i].parentNode.classList.toggle("on", catInputs[i].checked);
+    }
+  }
+  paintSeg();
+
+  // ---------------------------------------------------------------
+  // Dates: box 9b auto-count, box 10 and Raptor dates mirror box 9
+  // until the user edits them by hand.
+  // ---------------------------------------------------------------
+  var MON = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  function ymd(iso){ return iso ? iso.replace(/-/g, "") : ""; }
+  function milDate(iso){
+    if (!iso) return "";
+    var p = iso.split("-");
+    return p[2] + " " + MON[parseInt(p[1], 10) - 1] + " " + p[0];
+  }
+  function dayCount(a, b){
+    if (!a || !b) return "";
+    var d = Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
+    return d > 0 ? String(d) : "";
+  }
+
+  var MIRRORS = ["days9", "from10b", "to10b", "days10b", "from10c", "to10c", "days10c", "actDates"];
+  var touched = {};
+  MIRRORS.forEach(function(id){
+    $(id).addEventListener("input", function(){ touched[id] = true; });
+  });
+  function setAuto(id, v){ if (!touched[id]) $(id).value = v; }
+
+  function syncDates(){
+    var f = $("from9").value, t = $("to9").value;
+    setAuto("days9", dayCount(f, t));
+    var days = $("days9").value;
+    var cat = getCat();
+    var b = cat === "chargeable", c = cat === "nonchargeable";
+    setAuto("from10b", b ? f : ""); setAuto("to10b", b ? t : ""); setAuto("days10b", b ? days : "");
+    setAuto("from10c", c ? f : ""); setAuto("to10c", c ? t : ""); setAuto("days10c", c ? days : "");
+    var txt = "";
+    if (f && t) txt = f === t ? milDate(f) : milDate(f) + " - " + milDate(t);
+    else if (f) txt = milDate(f);
+    setAuto("actDates", txt);
+  }
+  ["from9", "to9", "days9"].forEach(function(id){ $(id).addEventListener("input", syncDates); });
+  for (var ci = 0; ci < catInputs.length; ci++) {
+    catInputs[ci].addEventListener("change", function(){ paintSeg(); syncDates(); });
+  }
+
+  // ---------------------------------------------------------------
+  // Signature pad
+  // ---------------------------------------------------------------
+  var sig = $("sig"), sctx = sig.getContext("2d"), sigDirty = false, drawing = false, last = null;
+  function sizeSig(){
+    var r = sig.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (!r.width) return;
+    var keep = sigDirty ? sig.toDataURL() : null;
+    sig.width = Math.round(r.width * dpr); sig.height = Math.round(r.height * dpr);
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sctx.lineWidth = 2.2; sctx.lineCap = "round"; sctx.lineJoin = "round"; sctx.strokeStyle = "#0b1a33";
+    if (keep) { var im = new Image(); im.onload = function(){ sctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
+  }
+  function pt(e){ var r = sig.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  sig.addEventListener("pointerdown", function(e){
+    drawing = true; last = pt(e); sig.setPointerCapture(e.pointerId);
+    sctx.beginPath(); sctx.arc(last.x, last.y, 1.1, 0, Math.PI * 2); sctx.fillStyle = "#0b1a33"; sctx.fill();
+    sigDirty = true;
+  });
+  sig.addEventListener("pointermove", function(e){
+    if (!drawing) return;
+    var p = pt(e);
+    sctx.beginPath(); sctx.moveTo(last.x, last.y); sctx.lineTo(p.x, p.y); sctx.stroke();
+    last = p;
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(function(ev){
+    sig.addEventListener(ev, function(){ drawing = false; });
+  });
+  $("sigClear").addEventListener("click", function(){
+    sctx.clearRect(0, 0, sig.width, sig.height); sigDirty = false;
+  });
+  $("signNow").addEventListener("change", function(){
+    var on = this.checked;
+    $("sigBlock").classList.toggle("hidden", !on);
+    $("signHint").classList.toggle("hidden", on);
+    if (on) sizeSig();
+  });
+  window.addEventListener("resize", function(){ if ($("signNow").checked) sizeSig(); });
+
+  // Signature cropped to its ink, as PNG bytes (or null)
+  function signaturePng(){
+    if (!$("signNow").checked || !sigDirty) return null;
+    var w = sig.width, h = sig.height, data = sctx.getImageData(0, 0, w, h).data;
+    var x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 20) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+    if (x1 < 0) return null;
+    var padPx = 4; x0 = Math.max(0, x0 - padPx); y0 = Math.max(0, y0 - padPx);
+    x1 = Math.min(w - 1, x1 + padPx); y1 = Math.min(h - 1, y1 + padPx);
+    var c = document.createElement("canvas");
+    c.width = x1 - x0 + 1; c.height = y1 - y0 + 1;
+    c.getContext("2d").drawImage(sig, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+    return dataUrlBytes(c.toDataURL("image/png"));
+  }
+  function dataUrlBytes(url){
+    var b = atob(url.split(",")[1]), out = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+    return out;
+  }
+
+  // ---------------------------------------------------------------
+  // Attachments
+  // ---------------------------------------------------------------
+  var files = []; // {file, pages}
+  var fileList = $("fileList");
+
+  function renderFiles(){
+    fileList.innerHTML = "";
+    ["DA 31 (filled)", "TF Raptor Soldier Action Form (filled)"].forEach(function(n, i){
+      var li = document.createElement("li"); li.className = "fixed";
+      li.innerHTML = '<span class="name"></span><span class="meta">page ' + (i + 1) + "</span>";
+      li.firstChild.textContent = n;
+      fileList.appendChild(li);
+    });
+    files.forEach(function(f, i){
+      var li = document.createElement("li");
+      var nm = document.createElement("span"); nm.className = "name"; nm.textContent = f.file.name;
+      var meta = document.createElement("span"); meta.className = "meta";
+      meta.textContent = f.file.type.indexOf("image/") === 0 ? "photo" : (f.pages ? f.pages + " pg" : "PDF");
+      li.appendChild(nm); li.appendChild(meta);
+      li.appendChild(btn("↑", "Move up", i === 0, function(){ move(i, -1); }));
+      li.appendChild(btn("↓", "Move down", i === files.length - 1, function(){ move(i, 1); }));
+      li.appendChild(btn("✕", "Remove", false, function(){ files.splice(i, 1); renderFiles(); }));
+      fileList.appendChild(li);
+    });
+  }
+  function btn(txt, title, disabled, fn){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = txt; b.title = title; b.setAttribute("aria-label", title);
+    b.disabled = disabled; b.addEventListener("click", fn);
+    return b;
+  }
+  function move(i, d){
+    var t = files[i]; files[i] = files[i + d]; files[i + d] = t; renderFiles();
+  }
+  function addFiles(list){
+    Array.prototype.forEach.call(list, function(file){
+      var isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+      var isImg = file.type.indexOf("image/") === 0;
+      if (!isPdf && !isImg) { setStatus("Skipped " + file.name + " (only PDFs and photos can be added).", "err"); return; }
+      var entry = { file: file, pages: 0 };
+      files.push(entry);
+      if (isPdf) {
+        file.arrayBuffer().then(function(buf){
+          return PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+        }).then(function(doc){
+          entry.pages = doc.getPageCount(); renderFiles();
+          // Adobe "dynamic" (XFA) forms only show a "Please wait..." page outside Adobe
+          if (doc.catalog.get(PDFLib.PDFName.of("NeedsRendering")) === PDFLib.PDFBool.True) {
+            setStatus(file.name + " is an Adobe-only form and will show as a \"Please wait\" page. " +
+              "Open it in Adobe, print it to PDF, and add that copy instead.", "err");
+          }
+        }).catch(function(){});
+      }
+    });
+    renderFiles();
+    hideResult();
+  }
+  var drop = $("drop"), fileInput = $("fileInput");
+  drop.addEventListener("click", function(){ fileInput.click(); });
+  fileInput.addEventListener("change", function(){ addFiles(fileInput.files); fileInput.value = ""; });
+  drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+  drop.addEventListener("drop", function(e){
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+  renderFiles();
+
+  // ---------------------------------------------------------------
+  // PDF helpers
+  // ---------------------------------------------------------------
+  var charsetCache = null;
+  // Standard PDF fonts only cover Latin-1-ish characters; swap or drop the rest.
+  function clean(text, font){
+    if (!text) return "";
+    text = String(text)
+      .replace(/[‘’‛]/g, "'").replace(/[“”]/g, '"')
+      .replace(/[–—]/g, "-").replace(/…/g, "...").replace(/\t/g, " ");
+    if (!charsetCache) charsetCache = new Set(font.getCharacterSet());
+    var out = "";
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (ch === "\n" || charsetCache.has(ch.codePointAt(0))) out += ch;
+    }
+    return out;
+  }
+  function fitSize(font, text, maxW, size){
+    while (size > 6 && font.widthOfTextAtSize(text, size) > maxW) size -= 0.5;
+    return size;
+  }
+  function drawSpot(page, font, spot, text, size){
+    text = clean(text, font).replace(/\s*\n\s*/g, " ").trim();
+    if (!text) return;
+    var s = fitSize(font, text, spot[2], size || 10);
+    var w = font.widthOfTextAtSize(text, s);
+    var x = spot[3] === "center" ? spot[0] - w / 2 : spot[0];
+    page.drawText(text, { x: x, y: PAGE_H - spot[1], size: s, font: font, color: PDFLib.rgb(0, 0, 0) });
+  }
+  function wrap(font, text, size, maxW){
+    var lines = [];
+    clean(text, font).split("\n").forEach(function(par){
+      var words = par.trim().split(/\s+/), cur = "";
+      words.forEach(function(w){
+        if (!w) return;
+        var tryLine = cur ? cur + " " + w : w;
+        if (font.widthOfTextAtSize(tryLine, size) <= maxW || !cur) cur = tryLine;
+        else { lines.push(cur); cur = w; }
+      });
+      if (cur) lines.push(cur);
+    });
+    return lines;
+  }
+  function eraseBox(page, b){
+    page.drawRectangle({ x: b[0] + 1.1, y: PAGE_H - b[1] - 9, width: 7.9, height: 7.9, color: PDFLib.rgb(1, 1, 1) });
+  }
+  function checkBox(page, b){
+    page.drawSvgPath("M 1.8 5.2 L 4.1 7.8 L 8.4 2.0", {
+      x: b[0], y: PAGE_H - b[1], borderColor: PDFLib.rgb(0, 0, 0), borderWidth: 1.4
+    });
+  }
+  function drawSig(page, img, box){
+    var s = Math.min(box[2] / img.width, box[3] / img.height);
+    var w = img.width * s, h = img.height * s;
+    page.drawImage(img, { x: box[0], y: PAGE_H - box[1] - box[3] + (box[3] - h) / 2, width: w, height: h });
+  }
+  function fetchBytes(url){
+    if (!blanks[url]) return Promise.reject(new Error("Page is locked. Reload and enter the password."));
+    return Promise.resolve(blanks[url].slice(0));
+  }
+  function val(id){ return $(id).value.trim(); }
+
+  // pdf-lib's flatten() deletes radio-button widgets but leaves them listed in
+  // the page's /Annots, which leaves broken references. Drop those.
+  function flatten(doc){
+    doc.getForm().flatten();
+    doc.getPages().forEach(function(page){
+      var annots = page.node.Annots();
+      if (!annots) return;
+      for (var i = annots.size() - 1; i >= 0; i--) {
+        var ref = annots.get(i);
+        if (ref instanceof PDFLib.PDFRef && !doc.context.lookup(ref)) annots.remove(i);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Fill DA 31
+  // ---------------------------------------------------------------
+  async function fillDa31(sigPng){
+    var doc = await PDFLib.PDFDocument.load(await fetchBytes(DA31_URL));
+    var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    var page = doc.getPage(0);
+
+    drawSpot(page, font, DA.name, val("name").toUpperCase());
+    drawSpot(page, font, DA.dodid, val("dodid"));
+    drawSpot(page, font, DA.rank, val("rank").toUpperCase());
+    drawSpot(page, font, DA.date, ymd($("reqDate").value));
+
+    var addrSize = 10, addr = wrap(font, $("leaveAddr").value, addrSize, DA.addr[2]);
+    while (addr.length > 4 && addrSize > 7) { addrSize -= 0.5; addr = wrap(font, $("leaveAddr").value, addrSize, DA.addr[2]); }
+    addr.slice(0, 4).forEach(function(line, i){
+      page.drawText(line, { x: DA.addr[0], y: PAGE_H - DA.addr[1] - i * (addrSize + 1.5), size: addrSize, font: font });
+    });
+
+    // Box 8: clear whatever is pre-checked on the blank, then check the chosen boxes
+    Object.keys(CAT_BOXES).forEach(function(k){ eraseBox(page, CAT_BOXES[k]); });
+    ABS_TYPES.forEach(function(t){ eraseBox(page, [t[1], t[2]]); });
+    var cat = getCat();
+    if (CAT_BOXES[cat]) checkBox(page, CAT_BOXES[cat]);
+    ABS_TYPES.forEach(function(t){ if (t[0] === absSel.value) checkBox(page, [t[1], t[2]]); });
+
+    drawSpot(page, font, DA.from9, ymd($("from9").value));
+    drawSpot(page, font, DA.days9, val("days9"));
+    drawSpot(page, font, DA.to9, ymd($("to9").value));
+    drawSpot(page, font, DA.accrued, val("accrued"), 9);
+    drawSpot(page, font, DA.from10b, ymd($("from10b").value), 9);
+    drawSpot(page, font, DA.days10b, val("days10b"), 9);
+    drawSpot(page, font, DA.to10b, ymd($("to10b").value), 9);
+    drawSpot(page, font, DA.adv10b, val("adv10b"), 9);
+    drawSpot(page, font, DA.exc10b, val("exc10b"), 9);
+    drawSpot(page, font, DA.from10c, ymd($("from10c").value), 9);
+    drawSpot(page, font, DA.days10c, val("days10c"), 9);
+    drawSpot(page, font, DA.to10c, ymd($("to10c").value), 9);
+
+    if (sigPng) {
+      drawSig(page, await doc.embedPng(sigPng), DA_SIG_BOX);
+      drawSpot(page, font, DA.sigDate, ymd($("sigDate").value), 9);
+    }
+    return doc;
+  }
+
+  // ---------------------------------------------------------------
+  // Fill TF Raptor (real form fields, flattened afterward)
+  // ---------------------------------------------------------------
+  async function fillRaptor(sigPng){
+    var doc = await PDFLib.PDFDocument.load(await fetchBytes(RAPTOR_URL));
+    var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    var form = doc.getForm();
+    function setText(name, text, size){
+      var f = form.getTextField(name);
+      if (size) f.setFontSize(size);
+      f.setText(clean(text, font));
+    }
+    var nameRank = [val("rank").toUpperCase(), val("name").toUpperCase()].filter(Boolean).join(" ");
+    setText("Soldiers Name", nameRank);
+    setText("DATE", milDate($("reqDate").value));
+    setText("Soldiers Phone Number", val("phone"));
+    setText("Soldiers EMAIL", val("email"), fitSize(font, val("email"), 132, 10));
+    document.querySelectorAll("input[name=unit], input[name=action]").forEach(function(cb){
+      if (cb.checked) form.getCheckBox(cb.value).check();
+    });
+    setText("Other reason than above", val("other"));
+    setText("Requested Dates of Pass", val("actDates"));
+    setText("Details of Requested Action", $("details").value.trim(), 10);
+    setText("Action Taken by Responsible SM", $("itinerary").value.trim(), 10);
+
+    var page = doc.getPage(0);
+    if (sigPng) {
+      setText("Soldier Date", milDate($("sigDate").value));
+    }
+    form.updateFieldAppearances(font);
+    flatten(doc);
+    if (sigPng) drawSig(page, await doc.embedPng(sigPng), RAPTOR_SIG_BOX);
+    return doc;
+  }
+
+  // ---------------------------------------------------------------
+  // Attachments into the packet
+  // ---------------------------------------------------------------
+  async function appendPdf(out, file){
+    var buf = await file.arrayBuffer();
+    try {
+      var src = await PDFLib.PDFDocument.load(buf);
+      try { flatten(src); } catch (e) { /* no form, or odd form: keep as is */ }
+      var pages = await out.copyPages(src, src.getPageIndices());
+      pages.forEach(function(p){ out.addPage(p); });
+    } catch (err) {
+      // Encrypted/locked or unusual PDFs: render each page to an image instead.
+      await appendRendered(out, buf, file.name);
+    }
+  }
+  async function appendRendered(out, buf, name){
+    if (!window.pdfjsLib) throw new Error("Couldn't read " + name + ".");
+    var pdf;
+    try { pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise; }
+    catch (e) { throw new Error("Couldn't read " + name + " (it may be password protected)."); }
+    for (var i = 1; i <= pdf.numPages; i++) {
+      var pg = await pdf.getPage(i);
+      var vp1 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: 2 });
+      var c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+      var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+      var img = await out.embedJpg(dataUrlBytes(c.toDataURL("image/jpeg", 0.88)));
+      var page = out.addPage([vp1.width, vp1.height]);
+      page.drawImage(img, { x: 0, y: 0, width: vp1.width, height: vp1.height });
+    }
+  }
+  async function appendImage(out, file){
+    // Re-encode through a canvas so any photo format the browser can show works,
+    // and so phone photos come out the right way up.
+    var url = URL.createObjectURL(file);
+    try {
+      var im = await new Promise(function(res, rej){
+        var i = new Image(); i.onload = function(){ res(i); };
+        i.onerror = function(){ rej(new Error("Couldn't read " + file.name + ".")); }; i.src = url;
+      });
+      var maxPx = 2400, s = Math.min(1, maxPx / Math.max(im.naturalWidth, im.naturalHeight));
+      var c = document.createElement("canvas");
+      c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
+      var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(im, 0, 0, c.width, c.height);
+      var img = await out.embedJpg(dataUrlBytes(c.toDataURL("image/jpeg", 0.85)));
+      var land = c.width > c.height;
+      var pw = land ? 792 : 612, ph = land ? 612 : 792, m = 36;
+      var sc = Math.min((pw - 2 * m) / c.width, (ph - 2 * m) / c.height);
+      var w = c.width * sc, h = c.height * sc;
+      var page = out.addPage([pw, ph]);
+      page.drawImage(img, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  // ---------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------
+  var resultUrl = null, resultName = "";
+  function setStatus(msg, cls){ var s = $("status"); s.textContent = msg; s.className = "status" + (cls ? " " + cls : ""); }
+  function hideResult(){ $("result").style.display = "none"; }
+  document.querySelector("main").addEventListener("input", hideResult);
+
+  $("build").addEventListener("click", async function(){
+    var b = this;
+    if (!val("name")) { setStatus("Enter your name first.", "err"); $("name").focus(); return; }
+    if ($("signNow").checked && !sigDirty) { setStatus("Draw your signature, or uncheck \"Sign now\".", "err"); return; }
+    b.disabled = true; hideResult(); setStatus("Building packet…");
+    try {
+      var sigPng = signaturePng();
+      var out = await PDFLib.PDFDocument.create();
+      var parts = [await fillDa31(sigPng), await fillRaptor(sigPng)];
+      for (var i = 0; i < parts.length; i++) {
+        var pages = await out.copyPages(parts[i], parts[i].getPageIndices());
+        pages.forEach(function(p){ out.addPage(p); });
+      }
+      for (var j = 0; j < files.length; j++) {
+        setStatus("Adding " + files[j].file.name + "…");
+        if (files[j].file.type.indexOf("image/") === 0) await appendImage(out, files[j].file);
+        else await appendPdf(out, files[j].file);
+      }
+      out.setTitle("Leave Packet - " + val("name"));
+      var bytes = await out.save();
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      var last = val("name").split(",")[0].replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "") || "Soldier";
+      resultName = "Leave_Packet_" + last + "_" + (ymd($("from9").value) || ymd($("reqDate").value)) + ".pdf";
+      setStatus("Ready: " + out.getPageCount() + " pages.", "good");
+      $("result").style.display = "block";
+    } catch (err) {
+      console.error(err);
+      setStatus(err && err.message ? err.message : "Something went wrong building the PDF.", "err");
+    } finally {
+      b.disabled = false;
+    }
+  });
+  $("download").addEventListener("click", function(){
+    if (!resultUrl) return;
+    var a = document.createElement("a"); a.href = resultUrl; a.download = resultName;
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  $("openPdf").addEventListener("click", function(){ if (resultUrl) window.open(resultUrl, "_blank"); });
+})();
+</script>
+</body>
+</html>
