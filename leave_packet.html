@@ -175,7 +175,6 @@
   <div class="seg" id="catSeg">
     <label><input type="radio" name="cat" value="chargeable"><span>Chargeable</span></label>
     <label><input type="radio" name="cat" value="nonchargeable" checked><span>Non-chargeable</span></label>
-    <label><input type="radio" name="cat" value="combination"><span>Combination</span></label>
   </div>
   <div class="field">
     <select id="absType"></select>
@@ -201,20 +200,6 @@
     <input id="accrued" inputmode="decimal">
   </div>
   <p class="hint" id="box10Hint"></p>
-  <div id="comboBlock" class="hidden">
-    <label>10b. Chargeable leave requested</label>
-    <div class="row">
-      <div class="field"><input id="from10b" type="date" aria-label="10b from"></div>
-      <div class="field"><input id="to10b" type="date" aria-label="10b to"></div>
-    </div>
-    <div class="field"><input id="days10b" inputmode="decimal" placeholder="Days" aria-label="10b days requested"></div>
-    <label>10c. Non-chargeable absence requested</label>
-    <div class="row">
-      <div class="field"><input id="from10c" type="date" aria-label="10c from"></div>
-      <div class="field"><input id="to10c" type="date" aria-label="10c to"></div>
-    </div>
-    <div class="field"><input id="days10c" inputmode="decimal" placeholder="Days" aria-label="10c days requested"></div>
-  </div>
   <div id="advBlock" class="hidden">
     <label>10b. Advance / excess days</label>
     <div class="row">
@@ -257,14 +242,17 @@
   // The blank forms are stored encrypted (PBKDF2-SHA256 -> AES-256-GCM,
   // layout: salt(16) | iv(12) | ciphertext+tag). The password is the key;
   // it is not stored anywhere in this repo.
-  var DA31_URL = "forms/da31.pdf.enc";
+  // All files are encrypted with the same salt, so the key is derived once.
   var RAPTOR_URL = "forms/tf_raptor_action_form.pdf.enc";
+  var DA31_NC_URL = "forms/da31.pdf.enc";             // non-chargeable layout
+  var DA31_C_URL = "forms/da31_chargeable.pdf.enc";   // chargeable layout
+  var FORM_URLS = [RAPTOR_URL, DA31_NC_URL, DA31_C_URL];
   var KDF_ITER = 600000;
   var PAGE_H = 792; // both forms are US Letter
   var blanks = {}; // decrypted form bytes, keyed by URL
 
   async function unlock(pw){
-    var enc = await Promise.all([DA31_URL, RAPTOR_URL].map(function(u){
+    var enc = await Promise.all(FORM_URLS.map(function(u){
       return fetch(u).then(function(r){
         if (!r.ok) throw new Error("Couldn't load the forms (" + r.status + ").");
         return r.arrayBuffer();
@@ -278,8 +266,7 @@
     var out = await Promise.all(enc.map(function(buf){
       return crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(buf, 16, 12) }, key, new Uint8Array(buf, 28));
     })); // throws on a wrong password
-    blanks[DA31_URL] = out[0];
-    blanks[RAPTOR_URL] = out[1];
+    FORM_URLS.forEach(function(u, i){ blanks[u] = out[i]; });
   }
 
   var SESSION_KEY = "leavePacketPw";
@@ -317,46 +304,80 @@
   // DA 31 layout. Coordinates are PDF points measured from the TOP-left
   // of the page (converted with PAGE_H when drawing).
   // ---------------------------------------------------------------
+  // Box 8 category checkboxes (same spot on both layouts)
   var CAT_BOXES = {
     chargeable:    [32.8, 163.4],
     nonchargeable: [112.6, 163.4],
     combination:   [212.9, 163.4]
   };
-  // [label, x, y] of each type-of-absence checkbox (10pt square)
-  var ABS_TYPES = [
-    ["PASS, Regular", 24.5, 183.0],
-    ["PASS, Special 3-Day", 24.5, 197.4],
-    ["PASS, Special 4-Day", 24.5, 211.9],
-    ["Convalescent Leave", 24.5, 226.3],
-    ["Maternity Convalescent Leave", 24.5, 240.8],
-    ["Parental Leave", 24.5, 255.4],
-    ["Bereavement Leave", 24.5, 269.8],
-    ["House Hunting", 142.6, 183.0],
-    ["Proceed Time (OCONUS Restricted PDS)", 142.6, 197.4],
-    ["Privately Owned Vehicle, Pick-up/Delivery", 142.6, 211.9],
-    ["Retirement or Involuntary Separation (ISAA)", 142.6, 226.3],
-    ["Transition Administrative Absence", 142.6, 240.8],
-    ["Transition Assistance Program (TAP) Seminar", 142.6, 255.4],
-    ["Career Skills Program", 142.6, 269.4],
-    ["Retirement Presiding Official", 142.6, 283.7],
-    ["Graduation Leave, Military Academies", 311.4, 183.0],
-    ["Graduation Leave, ROTC", 311.4, 197.4],
-    ["Recruiting Assistance Leave", 311.4, 211.9],
-    ["Competitive Sporting and Other Events", 311.4, 226.3],
-    ["Professional Development", 311.4, 240.8],
-    ["Professional Meetings", 311.4, 255.4],
-    ["Credit Union Board Meetings", 311.4, 269.8],
-    ["Excess Leave", 457.4, 183.0],
-    ["Legal Marriage", 457.4, 197.4],
-    ["Legal Witness/Jury Duty", 457.4, 211.9],
-    ["Non-medical Attendant", 457.4, 226.3],
-    ["Rest and Recuperation, Non-Chargeable", 457.4, 244.7],
-    ["Rest and Recuperation, Special", 457.4, 262.4],
-    ["Non-Covered Reproductive Health Care", 457.4, 280.7]
-  ];
-  var DEFAULT_ABS = "PASS, Special 4-Day";
 
-  // Text spots: [x, baselineY, maxWidth, align]
+  // The Adobe form changes layout with the type of absence, so each category
+  // has its own flat copy: its own leave types ([label, x, y] of each 10pt
+  // checkbox), how far boxes 9 and 10 sit above the non-chargeable layout,
+  // and where box 11 is.
+  var LAYOUTS = {
+    nonchargeable: {
+      url: DA31_NC_URL,
+      dy9: 0, dy10: 0,
+      sig: [19, 395, 536.5, 419.8],
+      defaultType: "PASS, Special 4-Day",
+      types: [
+        ["PASS, Regular", 24.5, 183.0],
+        ["PASS, Special 3-Day", 24.5, 197.4],
+        ["PASS, Special 4-Day", 24.5, 211.9],
+        ["Convalescent Leave", 24.5, 226.3],
+        ["Maternity Convalescent Leave", 24.5, 240.8],
+        ["Parental Leave", 24.5, 255.4],
+        ["Bereavement Leave", 24.5, 269.8],
+        ["House Hunting", 142.6, 183.0],
+        ["Proceed Time (OCONUS Restricted PDS)", 142.6, 197.4],
+        ["Privately Owned Vehicle, Pick-up/Delivery", 142.6, 211.9],
+        ["Retirement or Involuntary Separation (ISAA)", 142.6, 226.3],
+        ["Transition Administrative Absence", 142.6, 240.8],
+        ["Transition Assistance Program (TAP) Seminar", 142.6, 255.4],
+        ["Career Skills Program", 142.6, 269.4],
+        ["Retirement Presiding Official", 142.6, 283.7],
+        ["Graduation Leave, Military Academies", 311.4, 183.0],
+        ["Graduation Leave, ROTC", 311.4, 197.4],
+        ["Recruiting Assistance Leave", 311.4, 211.9],
+        ["Competitive Sporting and Other Events", 311.4, 226.3],
+        ["Professional Development", 311.4, 240.8],
+        ["Professional Meetings", 311.4, 255.4],
+        ["Credit Union Board Meetings", 311.4, 269.8],
+        ["Excess Leave", 457.4, 183.0],
+        ["Legal Marriage", 457.4, 197.4],
+        ["Legal Witness/Jury Duty", 457.4, 211.9],
+        ["Non-medical Attendant", 457.4, 226.3],
+        ["Rest and Recuperation, Non-Chargeable", 457.4, 244.7],
+        ["Rest and Recuperation, Special", 457.4, 262.4],
+        ["Non-Covered Reproductive Health Care", 457.4, 280.7]
+      ]
+    },
+    chargeable: {
+      url: DA31_C_URL,
+      dy9: -56.8, dy10: -57.3,
+      sig: [19, 337, 536.5, 361.8],
+      defaultType: "Annual (Ordinary) Leave",
+      types: [
+        ["Annual (Ordinary) Leave", 32.9, 184.6],
+        ["Accession Leave", 32.9, 198.6],
+        ["Advance Leave", 32.9, 212.9],
+        ["Consecutive Overseas Tour (COT) Leave", 32.9, 227.2],
+        ["Emergency Leave", 212.9, 184.6],
+        ["Environmental Morale Leave (EML)", 212.9, 198.6],
+        ["Environmental Morale Leave, Funded (FEML)", 212.9, 212.9],
+        ["Pass Termination, Leave Charged After", 212.9, 227.2],
+        ["Permanent Change of Station (PCS) Leave", 407.6, 184.6],
+        ["Reenlistment Leave", 407.6, 198.6],
+        ["Rest and Recuperation Leave", 407.6, 212.9],
+        ["Terminal Leave", 407.6, 227.2]
+      ]
+    }
+  };
+  function layout(){ return LAYOUTS[getCat()] || LAYOUTS.nonchargeable; }
+
+  // Text spots: [x, baselineY, maxWidth, align], baselines as on the
+  // non-chargeable layout (box 9/10 rows are shifted by the layout's dy9/dy10)
   var DA = {
     name:    [22, 79, 252, "left"],
     dodid:   [281, 79, 126, "left"],
@@ -405,15 +426,19 @@
   buildChecks($("actionChecks"), ACTIONS, "action", ["Pass Request"]);
 
   var absSel = $("absType");
-  var none = document.createElement("option");
-  none.value = ""; none.textContent = "(no specific type checked)";
-  absSel.appendChild(none);
-  ABS_TYPES.forEach(function(t){
-    var o = document.createElement("option");
-    o.value = t[0]; o.textContent = t[0];
-    if (t[0] === DEFAULT_ABS) o.selected = true;
-    absSel.appendChild(o);
-  });
+  function fillAbsTypes(){
+    var lay = layout();
+    absSel.innerHTML = "";
+    var none = document.createElement("option");
+    none.value = ""; none.textContent = "(no specific type checked)";
+    absSel.appendChild(none);
+    lay.types.forEach(function(t){
+      var o = document.createElement("option");
+      o.value = t[0]; o.textContent = t[0];
+      if (t[0] === lay.defaultType) o.selected = true;
+      absSel.appendChild(o);
+    });
+  }
 
   function todayISO(){
     var d = new Date();
@@ -447,11 +472,6 @@
     var p = iso.split("-");
     return p[2] + " " + MON[parseInt(p[1], 10) - 1] + " " + p[0];
   }
-  function dayCount(a, b){
-    if (!a || !b) return "";
-    var d = Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
-    return d > 0 ? String(d) : "";
-  }
 
   // 9c = 9a + 9b days, counting the start day ("from 23 OCT, 4 days" ends 26 OCT).
   // Computed in UTC so daylight-saving changes can't shift the date.
@@ -465,31 +485,16 @@
   function syncTo9(){ $("to9").value = endDate($("from9").value, $("days9").value); }
   ["from9", "days9"].forEach(function(id){ $(id).addEventListener("input", syncTo9); });
 
-  var touched = {};
-  ["days10b", "days10c"].forEach(function(id){
-    $(id).addEventListener("input", function(){ touched[id] = true; });
-  });
-  function autoDays(daysId, fromId, toId){
-    if (!touched[daysId]) $(daysId).value = dayCount($(fromId).value, $(toId).value);
-  }
-  function syncDates(){
-    autoDays("days10b", "from10b", "to10b");
-    autoDays("days10c", "from10c", "to10c");
-  }
-  ["from10b", "to10b", "from10c", "to10c"].forEach(function(id){
-    $(id).addEventListener("input", syncDates);
-  });
 
   var BOX10_HINT = {
     chargeable: "Box 10b uses the dates and days from box 9.",
-    nonchargeable: "Box 10c uses the dates and days from box 9.",
-    combination: "Split the dates between chargeable (10b) and non-chargeable (10c)."
+    nonchargeable: "Box 10c uses the dates and days from box 9."
   };
   function syncCat(){
     var cat = getCat();
     paintSeg();
-    $("comboBlock").classList.toggle("hidden", cat !== "combination");
-    $("advBlock").classList.toggle("hidden", cat === "nonchargeable");
+    fillAbsTypes();
+    $("advBlock").classList.toggle("hidden", cat !== "chargeable");
     $("box10Hint").textContent = BOX10_HINT[cat] || "";
   }
   for (var ci = 0; ci < catInputs.length; ci++) catInputs[ci].addEventListener("change", syncCat);
@@ -500,15 +505,10 @@
     var cat = getCat(), v = {};
     ["from10b", "to10b", "from10c", "to10c"].forEach(function(id){ v[id] = ""; });
     v.days10b = v.days10c = "";
-    if (cat === "chargeable" || cat === "nonchargeable") {
-      var k = cat === "chargeable" ? "10b" : "10c";
-      v["from" + k] = $("from9").value; v["to" + k] = $("to9").value; v["days" + k] = val("days9");
-    } else if (cat === "combination") {
-      ["from10b", "to10b", "from10c", "to10c"].forEach(function(id){ v[id] = $(id).value; });
-      v.days10b = val("days10b"); v.days10c = val("days10c");
-    }
-    v.adv10b = cat === "nonchargeable" ? "" : val("adv10b");
-    v.exc10b = cat === "nonchargeable" ? "" : val("exc10b");
+    var k = cat === "chargeable" ? "10b" : "10c";
+    v["from" + k] = $("from9").value; v["to" + k] = $("to9").value; v["days" + k] = val("days9");
+    v.adv10b = cat === "chargeable" ? val("adv10b") : "";
+    v.exc10b = cat === "chargeable" ? val("exc10b") : "";
     return v;
   }
   // "23 OCT 2026 - 26 OCT 2026" for the Action Form
@@ -667,8 +667,11 @@
   // ---------------------------------------------------------------
   // Fill DA 31
   // ---------------------------------------------------------------
+  function shift(spot, dy){ return [spot[0], spot[1] + dy, spot[2], spot[3]]; }
+
   async function fillDa31(){
-    var doc = await PDFLib.PDFDocument.load(await fetchBytes(DA31_URL));
+    var lay = layout();
+    var doc = await PDFLib.PDFDocument.load(await fetchBytes(lay.url));
     var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     var page = doc.getPage(0);
 
@@ -688,24 +691,24 @@
 
     // Box 8: clear whatever is pre-checked on the blank, then check the chosen boxes
     Object.keys(CAT_BOXES).forEach(function(k){ eraseBox(page, CAT_BOXES[k]); });
-    ABS_TYPES.forEach(function(t){ eraseBox(page, [t[1], t[2]]); });
-    var cat = getCat();
-    if (CAT_BOXES[cat]) checkBox(page, CAT_BOXES[cat]);
-    ABS_TYPES.forEach(function(t){ if (t[0] === absSel.value) checkBox(page, [t[1], t[2]]); });
+    lay.types.forEach(function(t){ eraseBox(page, [t[1], t[2]]); });
+    checkBox(page, CAT_BOXES[getCat()]);
+    lay.types.forEach(function(t){ if (t[0] === absSel.value) checkBox(page, [t[1], t[2]]); });
 
-    drawSpot(page, font, DA.from9, ymd($("from9").value));
-    drawSpot(page, font, DA.days9, val("days9"));
-    drawSpot(page, font, DA.to9, ymd($("to9").value));
-    drawSpot(page, font, DA.accrued, val("accrued"), 9);
+    var d9 = lay.dy9, d10 = lay.dy10;
+    drawSpot(page, font, shift(DA.from9, d9), ymd($("from9").value));
+    drawSpot(page, font, shift(DA.days9, d9), val("days9"));
+    drawSpot(page, font, shift(DA.to9, d9), ymd($("to9").value));
+    drawSpot(page, font, shift(DA.accrued, d10), val("accrued"), 9);
     var b10 = box10();
-    drawSpot(page, font, DA.from10b, ymd(b10.from10b), 9);
-    drawSpot(page, font, DA.days10b, b10.days10b, 9);
-    drawSpot(page, font, DA.to10b, ymd(b10.to10b), 9);
-    drawSpot(page, font, DA.adv10b, b10.adv10b, 9);
-    drawSpot(page, font, DA.exc10b, b10.exc10b, 9);
-    drawSpot(page, font, DA.from10c, ymd(b10.from10c), 9);
-    drawSpot(page, font, DA.days10c, b10.days10c, 9);
-    drawSpot(page, font, DA.to10c, ymd(b10.to10c), 9);
+    drawSpot(page, font, shift(DA.from10b, d10), ymd(b10.from10b), 9);
+    drawSpot(page, font, shift(DA.days10b, d10), b10.days10b, 9);
+    drawSpot(page, font, shift(DA.to10b, d10), ymd(b10.to10b), 9);
+    drawSpot(page, font, shift(DA.adv10b, d10), b10.adv10b, 9);
+    drawSpot(page, font, shift(DA.exc10b, d10), b10.exc10b, 9);
+    drawSpot(page, font, shift(DA.from10c, d10), ymd(b10.from10c), 9);
+    drawSpot(page, font, shift(DA.days10c, d10), b10.days10c, 9);
+    drawSpot(page, font, shift(DA.to10c, d10), ymd(b10.to10c), 9);
     return doc;
   }
 
@@ -801,7 +804,6 @@
   // from the top-left of the page.
   // ---------------------------------------------------------------
   var RAPTOR_SIG_FIELD = [114, 530, 341, 549];     // the whole "Soldier:" line
-  var DA_SIG_FIELD = [19, 395, 536.5, 419.8];      // box 11, below its label
 
   function addSigField(doc, page, name, r){
     var ctx = doc.context;
@@ -845,7 +847,7 @@
       }
       // Empty CAC signature fields, added last so they belong to the final document
       addSigField(out, out.getPage(0), "Soldier Signature", RAPTOR_SIG_FIELD);
-      addSigField(out, out.getPage(1), "Requestor Signature", DA_SIG_FIELD);
+      addSigField(out, out.getPage(1), "Requestor Signature", layout().sig); // box 11, below its label
       out.setTitle("Leave Packet - " + val("name"));
       var bytes = await out.save();
       if (resultUrl) URL.revokeObjectURL(resultUrl);
