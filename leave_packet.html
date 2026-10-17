@@ -52,10 +52,6 @@
     color:var(--text); background:var(--panel); border:1px solid var(--border); border-radius:10px; cursor:pointer;
   }
   .checks input, label.check input{width:18px; height:18px; min-height:0; margin:0; flex:none; -webkit-appearance:auto; appearance:auto; accent-color:var(--accent);}
-  .sigwrap{background:#fff; border-radius:10px; position:relative; touch-action:none;}
-  canvas#sig{display:block; width:100%; height:130px; border-radius:10px;}
-  .sigline{position:absolute; left:16px; right:16px; bottom:30px; border-bottom:1px solid #c5ccd3; pointer-events:none;}
-  .sigx{position:absolute; left:16px; bottom:34px; color:#9aa5b1; font-size:15px; pointer-events:none;}
   .drop{
     border:1.5px dashed var(--border); border-radius:12px; padding:22px 14px; text-align:center;
     color:var(--muted); font-size:14px; cursor:pointer; background:var(--panel); margin-bottom:12px;
@@ -111,7 +107,7 @@
 <main id="app" class="hidden">
   <a class="back" href="index.html">&larr; Back</a>
   <h1>Leave / Pass Packet</h1>
-  <p class="sub">Fills out the DA 31 and the TF Raptor Soldier Action Form, adds your supporting documents, and gives you one PDF.</p>
+  <p class="sub">Fills out the TF Raptor Soldier Action Form and the DA 31, adds your supporting documents, and gives you one PDF.</p>
   <p class="hint">Everything stays on your device. Nothing you type or attach is uploaded.</p>
 
   <!-- ===================== SOLDIER ===================== -->
@@ -147,13 +143,32 @@
     <input id="reqDate" type="date">
   </div>
 
+  <!-- ===================== TF RAPTOR ===================== -->
+  <h2 class="section">TF Raptor Soldier Action Form</h2>
+  <p class="hint">Name, date, phone, email and unit come from above. Dates of requested action come from the leave dates (box 9) below.</p>
+  <label>Action</label>
+  <div class="checks" id="actionChecks"></div>
+  <div class="field">
+    <label for="other">Other</label>
+    <input id="other">
+  </div>
+  <div class="field">
+    <label for="details">Details of requested action (event type, how long it has been scheduled, etc.)</label>
+    <textarea id="details" rows="4"></textarea>
+  </div>
+  <div class="field">
+    <label for="itinerary">Action taken by responsible SM (travel itinerary, POC, etc.)</label>
+    <textarea id="itinerary" rows="4"></textarea>
+  </div>
+
   <!-- ===================== DA 31 ===================== -->
   <h2 class="section">DA 31 &mdash; Leave</h2>
+  <p class="hint">Name, rank, DoD ID and date come from above. Box 7 (organization, station, POC) is pre-printed on the form.</p>
   <div class="field">
-    <label for="leaveAddr">6. Leave address (street, city, state, ZIP and phone)</label>
+    <label for="leaveAddr">6. Leave address (street, city, state, ZIP)</label>
     <textarea id="leaveAddr" rows="3"></textarea>
   </div>
-  <p class="hint">Box 7 (organization, station, POC) is pre-printed on the form.</p>
+  <p class="hint">Your phone number from above is added to box 6.</p>
 
   <label>8. Type of absence</label>
   <div class="seg" id="catSeg">
@@ -184,61 +199,26 @@
     <label for="accrued">10a. Accrued leave (CR BAL)</label>
     <input id="accrued" inputmode="decimal">
   </div>
-  <p class="hint">Box 10b or 10c copies from box 9 based on the type above. Change any of them if needed.</p>
-  <label>10b. Chargeable leave requested</label>
-  <div class="row">
-    <div class="field"><input id="from10b" type="date" aria-label="10b from"></div>
-    <div class="field"><input id="to10b" type="date" aria-label="10b to"></div>
-  </div>
-  <div class="row">
+  <p class="hint" id="box10Hint"></p>
+  <div id="comboBlock" class="hidden">
+    <label>10b. Chargeable leave requested</label>
+    <div class="row">
+      <div class="field"><input id="from10b" type="date" aria-label="10b from"></div>
+      <div class="field"><input id="to10b" type="date" aria-label="10b to"></div>
+    </div>
     <div class="field"><input id="days10b" inputmode="decimal" placeholder="Days" aria-label="10b days requested"></div>
-    <div class="field"><input id="adv10b" inputmode="decimal" placeholder="Advance" aria-label="10b advance"></div>
-    <div class="field"><input id="exc10b" inputmode="decimal" placeholder="Excess" aria-label="10b excess"></div>
-  </div>
-  <label>10c. Non-chargeable absence requested</label>
-  <div class="row">
-    <div class="field"><input id="from10c" type="date" aria-label="10c from"></div>
-    <div class="field"><input id="to10c" type="date" aria-label="10c to"></div>
-  </div>
-  <div class="field"><input id="days10c" inputmode="decimal" placeholder="Days" aria-label="10c days requested"></div>
-
-  <!-- ===================== TF RAPTOR ===================== -->
-  <h2 class="section">TF Raptor Soldier Action Form</h2>
-  <label>Action</label>
-  <div class="checks" id="actionChecks"></div>
-  <div class="field">
-    <label for="other">Other</label>
-    <input id="other">
-  </div>
-  <div class="field">
-    <label for="actDates">Dates of requested action</label>
-    <input id="actDates" placeholder="Fills in from box 9">
-  </div>
-  <div class="field">
-    <label for="details">Details of requested action (event type, how long it has been scheduled, etc.)</label>
-    <textarea id="details" rows="4"></textarea>
-  </div>
-  <div class="field">
-    <label for="itinerary">Action taken by responsible SM (travel itinerary, etc.)</label>
-    <textarea id="itinerary" rows="4"></textarea>
-  </div>
-
-  <!-- ===================== SIGNATURE ===================== -->
-  <h2 class="section">Signature</h2>
-  <label class="check" style="margin-bottom:12px;"><input type="checkbox" id="signNow"> Sign now (DA 31 box 11 and the Soldier line)</label>
-  <p class="hint" id="signHint">Leave this unchecked to sign later with your CAC or in ink. The signature lines will stay blank.</p>
-  <div id="sigBlock" class="hidden">
-    <div class="sigwrap">
-      <canvas id="sig"></canvas>
-      <div class="sigline"></div><div class="sigx">&times;</div>
+    <label>10c. Non-chargeable absence requested</label>
+    <div class="row">
+      <div class="field"><input id="from10c" type="date" aria-label="10c from"></div>
+      <div class="field"><input id="to10c" type="date" aria-label="10c to"></div>
     </div>
-    <div class="row" style="margin:8px 0 14px; justify-content:space-between; align-items:center;">
-      <span class="hint" style="margin:0;">Sign with your finger or mouse.</span>
-      <button class="btn small" id="sigClear" type="button">Clear</button>
-    </div>
-    <div class="field">
-      <label for="sigDate">Signature date</label>
-      <input id="sigDate" type="date">
+    <div class="field"><input id="days10c" inputmode="decimal" placeholder="Days" aria-label="10c days requested"></div>
+  </div>
+  <div id="advBlock" class="hidden">
+    <label>10b. Advance / excess days</label>
+    <div class="row">
+      <div class="field"><input id="adv10b" inputmode="decimal" placeholder="Advance" aria-label="10b advance"></div>
+      <div class="field"><input id="exc10b" inputmode="decimal" placeholder="Excess" aria-label="10b excess"></div>
     </div>
   </div>
 
@@ -393,10 +373,8 @@
     exc10b:  [365.2, 368, 54, "center"],
     from10c: [423.6, 368, 56, "center"],
     days10c: [495.3, 368, 80, "center"],
-    to10c:   [565.7, 368, 54, "center"],
-    sigDate: [565.7, 413, 54, "center"]
+    to10c:   [565.7, 368, 54, "center"]
   };
-  var DA_SIG_BOX = [160, 395, 370, 23]; // x, top, w, h for box 11 signature
 
   // TF Raptor checkboxes (fillable field names)
   var UNITS = [["272", "Check Box5"], ["822", "Check Box6"], ["65", "Check Box7"], ["BNMC", "Check Box8"]];
@@ -407,7 +385,6 @@
     ["Promotion", "Check Box11"], ["Medical", "Check Box10"],
     ["Cond. Release", "Check Box9"]
   ];
-  var RAPTOR_SIG_BOX = [116, 532, 222, 16]; // over the "Soldier:" line
 
   // ---------------------------------------------------------------
   // Build the dynamic bits of the form
@@ -443,7 +420,6 @@
   }
   function pad(n){ return (n < 10 ? "0" : "") + n; }
   $("reqDate").value = todayISO();
-  $("sigDate").value = todayISO();
 
   // Segmented control highlight
   var catInputs = document.querySelectorAll("input[name=cat]");
@@ -459,8 +435,9 @@
   paintSeg();
 
   // ---------------------------------------------------------------
-  // Dates: box 9b auto-count, box 10 and Raptor dates mirror box 9
-  // until the user edits them by hand.
+  // Dates. Box 9 is entered once and feeds box 10 and the Action Form.
+  // Box 9b counts days automatically until it's edited by hand. Only a
+  // Combination absence needs its own 10b/10c split.
   // ---------------------------------------------------------------
   var MON = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   function ymd(iso){ return iso ? iso.replace(/-/g, "") : ""; }
@@ -475,92 +452,58 @@
     return d > 0 ? String(d) : "";
   }
 
-  var MIRRORS = ["days9", "from10b", "to10b", "days10b", "from10c", "to10c", "days10c", "actDates"];
   var touched = {};
-  MIRRORS.forEach(function(id){
+  ["days9", "days10b", "days10c"].forEach(function(id){
     $(id).addEventListener("input", function(){ touched[id] = true; });
   });
-  function setAuto(id, v){ if (!touched[id]) $(id).value = v; }
-
+  function autoDays(daysId, fromId, toId){
+    if (!touched[daysId]) $(daysId).value = dayCount($(fromId).value, $(toId).value);
+  }
   function syncDates(){
-    var f = $("from9").value, t = $("to9").value;
-    setAuto("days9", dayCount(f, t));
-    var days = $("days9").value;
+    autoDays("days9", "from9", "to9");
+    autoDays("days10b", "from10b", "to10b");
+    autoDays("days10c", "from10c", "to10c");
+  }
+  ["from9", "to9", "from10b", "to10b", "from10c", "to10c"].forEach(function(id){
+    $(id).addEventListener("input", syncDates);
+  });
+
+  var BOX10_HINT = {
+    chargeable: "Box 10b uses the dates and days from box 9.",
+    nonchargeable: "Box 10c uses the dates and days from box 9.",
+    combination: "Split the dates between chargeable (10b) and non-chargeable (10c)."
+  };
+  function syncCat(){
     var cat = getCat();
-    var b = cat === "chargeable", c = cat === "nonchargeable";
-    setAuto("from10b", b ? f : ""); setAuto("to10b", b ? t : ""); setAuto("days10b", b ? days : "");
-    setAuto("from10c", c ? f : ""); setAuto("to10c", c ? t : ""); setAuto("days10c", c ? days : "");
-    var txt = "";
-    if (f && t) txt = f === t ? milDate(f) : milDate(f) + " - " + milDate(t);
-    else if (f) txt = milDate(f);
-    setAuto("actDates", txt);
+    paintSeg();
+    $("comboBlock").classList.toggle("hidden", cat !== "combination");
+    $("advBlock").classList.toggle("hidden", cat === "nonchargeable");
+    $("box10Hint").textContent = BOX10_HINT[cat] || "";
   }
-  ["from9", "to9", "days9"].forEach(function(id){ $(id).addEventListener("input", syncDates); });
-  for (var ci = 0; ci < catInputs.length; ci++) {
-    catInputs[ci].addEventListener("change", function(){ paintSeg(); syncDates(); });
-  }
+  for (var ci = 0; ci < catInputs.length; ci++) catInputs[ci].addEventListener("change", syncCat);
+  syncCat();
 
-  // ---------------------------------------------------------------
-  // Signature pad
-  // ---------------------------------------------------------------
-  var sig = $("sig"), sctx = sig.getContext("2d"), sigDirty = false, drawing = false, last = null;
-  function sizeSig(){
-    var r = sig.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-    if (!r.width) return;
-    var keep = sigDirty ? sig.toDataURL() : null;
-    sig.width = Math.round(r.width * dpr); sig.height = Math.round(r.height * dpr);
-    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    sctx.lineWidth = 2.2; sctx.lineCap = "round"; sctx.lineJoin = "round"; sctx.strokeStyle = "#0b1a33";
-    if (keep) { var im = new Image(); im.onload = function(){ sctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
-  }
-  function pt(e){ var r = sig.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
-  sig.addEventListener("pointerdown", function(e){
-    drawing = true; last = pt(e); sig.setPointerCapture(e.pointerId);
-    sctx.beginPath(); sctx.arc(last.x, last.y, 1.1, 0, Math.PI * 2); sctx.fillStyle = "#0b1a33"; sctx.fill();
-    sigDirty = true;
-  });
-  sig.addEventListener("pointermove", function(e){
-    if (!drawing) return;
-    var p = pt(e);
-    sctx.beginPath(); sctx.moveTo(last.x, last.y); sctx.lineTo(p.x, p.y); sctx.stroke();
-    last = p;
-  });
-  ["pointerup", "pointercancel", "pointerleave"].forEach(function(ev){
-    sig.addEventListener(ev, function(){ drawing = false; });
-  });
-  $("sigClear").addEventListener("click", function(){
-    sctx.clearRect(0, 0, sig.width, sig.height); sigDirty = false;
-  });
-  $("signNow").addEventListener("change", function(){
-    var on = this.checked;
-    $("sigBlock").classList.toggle("hidden", !on);
-    $("signHint").classList.toggle("hidden", on);
-    if (on) sizeSig();
-  });
-  window.addEventListener("resize", function(){ if ($("signNow").checked) sizeSig(); });
-
-  // Signature cropped to its ink, as PNG bytes (or null)
-  function signaturePng(){
-    if (!$("signNow").checked || !sigDirty) return null;
-    var w = sig.width, h = sig.height, data = sctx.getImageData(0, 0, w, h).data;
-    var x0 = w, y0 = h, x1 = -1, y1 = -1;
-    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
-      if (data[(y * w + x) * 4 + 3] > 20) {
-        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-      }
+  // Box 10 values as they go on the form
+  function box10(){
+    var cat = getCat(), v = {};
+    ["from10b", "to10b", "from10c", "to10c"].forEach(function(id){ v[id] = ""; });
+    v.days10b = v.days10c = "";
+    if (cat === "chargeable" || cat === "nonchargeable") {
+      var k = cat === "chargeable" ? "10b" : "10c";
+      v["from" + k] = $("from9").value; v["to" + k] = $("to9").value; v["days" + k] = val("days9");
+    } else if (cat === "combination") {
+      ["from10b", "to10b", "from10c", "to10c"].forEach(function(id){ v[id] = $(id).value; });
+      v.days10b = val("days10b"); v.days10c = val("days10c");
     }
-    if (x1 < 0) return null;
-    var padPx = 4; x0 = Math.max(0, x0 - padPx); y0 = Math.max(0, y0 - padPx);
-    x1 = Math.min(w - 1, x1 + padPx); y1 = Math.min(h - 1, y1 + padPx);
-    var c = document.createElement("canvas");
-    c.width = x1 - x0 + 1; c.height = y1 - y0 + 1;
-    c.getContext("2d").drawImage(sig, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
-    return dataUrlBytes(c.toDataURL("image/png"));
+    v.adv10b = cat === "nonchargeable" ? "" : val("adv10b");
+    v.exc10b = cat === "nonchargeable" ? "" : val("exc10b");
+    return v;
   }
-  function dataUrlBytes(url){
-    var b = atob(url.split(",")[1]), out = new Uint8Array(b.length);
-    for (var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
-    return out;
+  // "23 OCT 2026 - 26 OCT 2026" for the Action Form
+  function actionDates(){
+    var f = $("from9").value, t = $("to9").value;
+    if (f && t) return f === t ? milDate(f) : milDate(f) + " - " + milDate(t);
+    return milDate(f || t);
   }
 
   // ---------------------------------------------------------------
@@ -571,7 +514,7 @@
 
   function renderFiles(){
     fileList.innerHTML = "";
-    ["DA 31 (filled)", "TF Raptor Soldier Action Form (filled)"].forEach(function(n, i){
+    ["TF Raptor Soldier Action Form (filled)", "DA 31 (filled)"].forEach(function(n, i){
       var li = document.createElement("li"); li.className = "fixed";
       li.innerHTML = '<span class="name"></span><span class="meta">page ' + (i + 1) + "</span>";
       li.firstChild.textContent = n;
@@ -650,6 +593,11 @@
     }
     return out;
   }
+  function dataUrlBytes(url){
+    var b = atob(url.split(",")[1]), out = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+    return out;
+  }
   function fitSize(font, text, maxW, size){
     while (size > 6 && font.widthOfTextAtSize(text, size) > maxW) size -= 0.5;
     return size;
@@ -684,11 +632,6 @@
       x: b[0], y: PAGE_H - b[1], borderColor: PDFLib.rgb(0, 0, 0), borderWidth: 1.4
     });
   }
-  function drawSig(page, img, box){
-    var s = Math.min(box[2] / img.width, box[3] / img.height);
-    var w = img.width * s, h = img.height * s;
-    page.drawImage(img, { x: box[0], y: PAGE_H - box[1] - box[3] + (box[3] - h) / 2, width: w, height: h });
-  }
   function fetchBytes(url){
     if (!blanks[url]) return Promise.reject(new Error("Page is locked. Reload and enter the password."));
     return Promise.resolve(blanks[url].slice(0));
@@ -712,7 +655,7 @@
   // ---------------------------------------------------------------
   // Fill DA 31
   // ---------------------------------------------------------------
-  async function fillDa31(sigPng){
+  async function fillDa31(){
     var doc = await PDFLib.PDFDocument.load(await fetchBytes(DA31_URL));
     var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     var page = doc.getPage(0);
@@ -722,8 +665,11 @@
     drawSpot(page, font, DA.rank, val("rank").toUpperCase());
     drawSpot(page, font, DA.date, ymd($("reqDate").value));
 
-    var addrSize = 10, addr = wrap(font, $("leaveAddr").value, addrSize, DA.addr[2]);
-    while (addr.length > 4 && addrSize > 7) { addrSize -= 0.5; addr = wrap(font, $("leaveAddr").value, addrSize, DA.addr[2]); }
+    // Box 6 = leave address plus the phone entered under Soldier
+    var addrText = $("leaveAddr").value.trim();
+    if (val("phone")) addrText += (addrText ? "\n" : "") + val("phone");
+    var addrSize = 10, addr = wrap(font, addrText, addrSize, DA.addr[2]);
+    while (addr.length > 4 && addrSize > 7) { addrSize -= 0.5; addr = wrap(font, addrText, addrSize, DA.addr[2]); }
     addr.slice(0, 4).forEach(function(line, i){
       page.drawText(line, { x: DA.addr[0], y: PAGE_H - DA.addr[1] - i * (addrSize + 1.5), size: addrSize, font: font });
     });
@@ -739,26 +685,22 @@
     drawSpot(page, font, DA.days9, val("days9"));
     drawSpot(page, font, DA.to9, ymd($("to9").value));
     drawSpot(page, font, DA.accrued, val("accrued"), 9);
-    drawSpot(page, font, DA.from10b, ymd($("from10b").value), 9);
-    drawSpot(page, font, DA.days10b, val("days10b"), 9);
-    drawSpot(page, font, DA.to10b, ymd($("to10b").value), 9);
-    drawSpot(page, font, DA.adv10b, val("adv10b"), 9);
-    drawSpot(page, font, DA.exc10b, val("exc10b"), 9);
-    drawSpot(page, font, DA.from10c, ymd($("from10c").value), 9);
-    drawSpot(page, font, DA.days10c, val("days10c"), 9);
-    drawSpot(page, font, DA.to10c, ymd($("to10c").value), 9);
-
-    if (sigPng) {
-      drawSig(page, await doc.embedPng(sigPng), DA_SIG_BOX);
-      drawSpot(page, font, DA.sigDate, ymd($("sigDate").value), 9);
-    }
+    var b10 = box10();
+    drawSpot(page, font, DA.from10b, ymd(b10.from10b), 9);
+    drawSpot(page, font, DA.days10b, b10.days10b, 9);
+    drawSpot(page, font, DA.to10b, ymd(b10.to10b), 9);
+    drawSpot(page, font, DA.adv10b, b10.adv10b, 9);
+    drawSpot(page, font, DA.exc10b, b10.exc10b, 9);
+    drawSpot(page, font, DA.from10c, ymd(b10.from10c), 9);
+    drawSpot(page, font, DA.days10c, b10.days10c, 9);
+    drawSpot(page, font, DA.to10c, ymd(b10.to10c), 9);
     return doc;
   }
 
   // ---------------------------------------------------------------
   // Fill TF Raptor (real form fields, flattened afterward)
   // ---------------------------------------------------------------
-  async function fillRaptor(sigPng){
+  async function fillRaptor(){
     var doc = await PDFLib.PDFDocument.load(await fetchBytes(RAPTOR_URL));
     var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     var form = doc.getForm();
@@ -776,17 +718,12 @@
       if (cb.checked) form.getCheckBox(cb.value).check();
     });
     setText("Other reason than above", val("other"));
-    setText("Requested Dates of Pass", val("actDates"));
+    setText("Requested Dates of Pass", actionDates());
     setText("Details of Requested Action", $("details").value.trim(), 10);
     setText("Action Taken by Responsible SM", $("itinerary").value.trim(), 10);
 
-    var page = doc.getPage(0);
-    if (sigPng) {
-      setText("Soldier Date", milDate($("sigDate").value));
-    }
     form.updateFieldAppearances(font);
     flatten(doc);
-    if (sigPng) drawSig(page, await doc.embedPng(sigPng), RAPTOR_SIG_BOX);
     return doc;
   }
 
@@ -856,12 +793,10 @@
   $("build").addEventListener("click", async function(){
     var b = this;
     if (!val("name")) { setStatus("Enter your name first.", "err"); $("name").focus(); return; }
-    if ($("signNow").checked && !sigDirty) { setStatus("Draw your signature, or uncheck \"Sign now\".", "err"); return; }
     b.disabled = true; hideResult(); setStatus("Building packet…");
     try {
-      var sigPng = signaturePng();
       var out = await PDFLib.PDFDocument.create();
-      var parts = [await fillDa31(sigPng), await fillRaptor(sigPng)];
+      var parts = [await fillRaptor(), await fillDa31()]; // Action Form first, then DA 31
       for (var i = 0; i < parts.length; i++) {
         var pages = await out.copyPages(parts[i], parts[i].getPageIndices());
         pages.forEach(function(p){ out.addPage(p); });
