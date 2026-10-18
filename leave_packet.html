@@ -35,6 +35,7 @@
   .field{margin-bottom:14px;}
   .row{display:flex; gap:10px;}
   .row > .field{flex:1; min-width:0;}
+  .row > .field.mi{flex:0 0 64px;}
   h2.section{
     font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
     color:var(--accent); margin:30px 0 12px;
@@ -113,9 +114,19 @@
 
   <!-- ===================== SOLDIER ===================== -->
   <h2 class="section">Soldier</h2>
-  <div class="field">
-    <label for="name">Name (Last, First, Middle Initial)</label>
-    <input id="name" autocomplete="name" placeholder="DOE, JOHN A">
+  <div class="row">
+    <div class="field">
+      <label for="last">Last name</label>
+      <input id="last" autocomplete="family-name" placeholder="DOE">
+    </div>
+    <div class="field">
+      <label for="first">First name</label>
+      <input id="first" autocomplete="given-name" placeholder="JOHN">
+    </div>
+    <div class="field mi">
+      <label for="mi">MI</label>
+      <input id="mi" maxlength="1" placeholder="A">
+    </div>
   </div>
   <div class="row">
     <div class="field">
@@ -649,6 +660,11 @@
     return Promise.resolve(blanks[url].slice(0));
   }
   function val(id){ return $(id).value.trim(); }
+  // "LAST, FIRST, MI" (MI left off when blank), as the DA 31 box 2 label asks.
+  function fullName(){
+    var parts = [val("last"), val("first"), val("mi").replace(/\./g, "")].filter(Boolean);
+    return parts.join(", ").toUpperCase();
+  }
 
   // pdf-lib's flatten() deletes radio-button widgets but leaves them listed in
   // the page's /Annots, which leaves broken references. Drop those.
@@ -675,7 +691,7 @@
     var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     var page = doc.getPage(0);
 
-    drawSpot(page, font, DA.name, val("name").toUpperCase());
+    drawSpot(page, font, DA.name, fullName());
     drawSpot(page, font, DA.dodid, val("dodid"));
     drawSpot(page, font, DA.rank, val("rank").toUpperCase());
     drawSpot(page, font, DA.date, ymd($("reqDate").value));
@@ -724,7 +740,7 @@
       if (size) f.setFontSize(size);
       f.setText(clean(text, font));
     }
-    var nameRank = [val("rank").toUpperCase(), val("name").toUpperCase()].filter(Boolean).join(" ");
+    var nameRank = [val("rank").toUpperCase(), fullName()].filter(Boolean).join(" ");
     setText("Soldiers Name", nameRank);
     setText("DATE", milDate($("reqDate").value));
     setText("Soldiers Phone Number", val("phone"));
@@ -831,7 +847,7 @@
 
   $("build").addEventListener("click", async function(){
     var b = this;
-    if (!val("name")) { setStatus("Enter your name first.", "err"); $("name").focus(); return; }
+    if (!val("last") || !val("first")) { setStatus("Enter your last and first name first.", "err"); $(val("last") ? "first" : "last").focus(); return; }
     b.disabled = true; hideResult(); setStatus("Building packet…");
     try {
       var out = await PDFLib.PDFDocument.create();
@@ -848,11 +864,11 @@
       // Empty CAC signature fields, added last so they belong to the final document
       addSigField(out, out.getPage(0), "Soldier Signature", RAPTOR_SIG_FIELD);
       addSigField(out, out.getPage(1), "Requestor Signature", layout().sig); // box 11, below its label
-      out.setTitle("Leave Packet - " + val("name"));
+      out.setTitle("Leave Packet - " + fullName());
       var bytes = await out.save();
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       resultUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-      var last = val("name").split(",")[0].replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "") || "Soldier";
+      var last = val("last").toUpperCase().replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "") || "Soldier";
       resultName = "Leave_Packet_" + last + "_" + (ymd($("from9").value) || ymd($("reqDate").value)) + ".pdf";
       setStatus("Ready: " + out.getPageCount() + " pages.", "good");
       $("result").style.display = "block";
