@@ -868,8 +868,10 @@
       var bytes = await out.save();
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       resultUrl = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-      var last = val("last").toUpperCase().replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "") || "Soldier";
-      resultName = "Leave_Packet_" + last + "_" + (ymd($("from9").value) || ymd($("reqDate").value)) + ".pdf";
+      // "RANK LAST, FIRST - SAF PACKET.pdf"; characters filesystems reject are dropped.
+      var who = [val("rank"), [val("last"), val("first")].filter(Boolean).join(", ")].filter(Boolean).join(" ");
+      who = who.toUpperCase().replace(/[\\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim();
+      resultName = (who ? who + " - " : "") + "SAF PACKET.pdf";
       setStatus("Ready: " + out.getPageCount() + " pages.", "good");
       $("result").style.display = "block";
     } catch (err) {
