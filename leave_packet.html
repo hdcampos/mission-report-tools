@@ -89,6 +89,10 @@
   #result .row{margin-top:10px;}
   .hidden{display:none !important;}
   .lock{max-width:420px; width:100%; margin:12vh auto 0;}
+  a.link{color:var(--accent);}
+  .inline{display:flex; gap:8px; align-items:stretch;}
+  .inline > input{flex:1; min-width:0;}
+  .inline > button.btn.small{flex:none;}
 </style>
 </head>
 <body>
@@ -216,6 +220,71 @@
     <div class="row">
       <div class="field"><input id="adv10b" inputmode="decimal" placeholder="Advance" aria-label="10b advance"></div>
       <div class="field"><input id="exc10b" inputmode="decimal" placeholder="Excess" aria-label="10b excess"></div>
+    </div>
+  </div>
+
+  <!-- ===================== TRAVEL COST WORKSHEET (off until rolled out) ===================== -->
+  <div id="twSection" class="hidden">
+    <h2 class="section">272 Travel Cost Analysis Worksheet</h2>
+    <label class="check" style="margin-bottom:14px;"><input type="checkbox" id="twInclude" checked>Add the worksheet to the packet</label>
+    <div id="twBody">
+      <p class="hint">Compares a round-trip flight from El Paso (ELP) with driving your own vehicle from Fort Bliss. Leave dates come from box 9.</p>
+      <div class="field">
+        <label for="twDest">Pass/leave location (city, state)</label>
+        <input id="twDest" placeholder="San Antonio, TX">
+      </div>
+      <div class="field">
+        <button class="btn small" id="twFlights" type="button">Search flights on Google Flights &#8599;</button>
+      </div>
+      <p class="hint">Screenshot the flight options and add the screenshot under Supporting documents. Do the same for rental options if you need a rental.</p>
+      <div class="row">
+        <div class="field">
+          <label for="twFlight">1. Flight cost (round trip)</label>
+          <input id="twFlight" inputmode="decimal" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label for="twRental">2. Rental vehicle cost</label>
+          <input id="twRental" inputmode="decimal" placeholder="0.00">
+        </div>
+      </div>
+      <div class="field">
+        <label for="twMiles">4. Round-trip miles (driving)</label>
+        <div class="inline">
+          <input id="twMiles" inputmode="decimal">
+          <button class="btn small" id="twMilesCalc" type="button">Calculate</button>
+        </div>
+      </div>
+      <div class="status" id="twMilesStatus" style="margin:-8px 0 12px;"></div>
+
+      <label>Vehicle (EPA fuel economy from fueleconomy.gov)</label>
+      <div class="row">
+        <div class="field"><select id="twYear" aria-label="Vehicle year"></select></div>
+        <div class="field"><select id="twMake" aria-label="Vehicle make" disabled><option value="">Make</option></select></div>
+      </div>
+      <div class="field"><select id="twModel" aria-label="Vehicle model" disabled><option value="">Model</option></select></div>
+      <div class="field"><select id="twOpt" aria-label="Engine and transmission" disabled><option value="">Engine / transmission</option></select></div>
+      <div class="status" id="twVehStatus" style="margin:-8px 0 12px;"></div>
+      <div class="row">
+        <div class="field">
+          <label for="twMpg">5. Average MPG (combined)</label>
+          <input id="twMpg" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label for="twPrice">7. Fuel price per gallon</label>
+          <input id="twPrice" inputmode="decimal" placeholder="0.00">
+        </div>
+      </div>
+      <p class="hint">Use the El Paso average on <a class="link" href="https://gasprices.aaa.com/?state=TX" target="_blank" rel="noopener">AAA Texas gas prices</a>. Rounded to the cent.</p>
+
+      <div class="row">
+        <div class="field"><label for="tw3">3. Total cost to fly</label><input id="tw3" readonly tabindex="-1"></div>
+        <div class="field"><label for="tw6">6. Gallons used</label><input id="tw6" readonly tabindex="-1"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="tw8">8. Total cost to drive</label><input id="tw8" readonly tabindex="-1"></div>
+        <div class="field"><label for="tw9">9. Savings, drive vs fly</label><input id="tw9" readonly tabindex="-1"></div>
+      </div>
+      <p class="hint">3 = 1 + 2 &middot; 6 = 4 &divide; 5 &middot; 8 = 6 &times; 7 &middot; 9 = 3 &minus; 8. A positive number in 9 means driving costs less.</p>
     </div>
   </div>
 
@@ -530,6 +599,159 @@
   }
 
   // ---------------------------------------------------------------
+  // 272 Travel Cost Analysis Worksheet. Off until the unit rolls it out:
+  // set WORKSHEET_ENABLED to true, or add ?worksheet=1 to the URL to try it.
+  // Fuel economy comes from fueleconomy.gov; miles from OpenStreetMap
+  // (Nominatim geocoding + OSRM routing). All three allow browser requests.
+  // ---------------------------------------------------------------
+  var WORKSHEET_ENABLED = false;
+  var worksheetOn = WORKSHEET_ENABLED || /[?&]worksheet=1(&|$)/.test(location.search);
+  var TW_ORIGIN = { name: "Fort Bliss, TX", lon: -106.4219, lat: 31.8126 };
+  var FEG = "https://www.fueleconomy.gov/ws/rest/vehicle/";
+  function worksheetIncluded(){ return worksheetOn && $("twInclude").checked; }
+
+  if (worksheetOn) $("twSection").classList.remove("hidden");
+  $("twInclude").addEventListener("change", function(){
+    $("twBody").classList.toggle("hidden", !this.checked);
+    renderFiles();
+  });
+
+  function num(id){
+    var s = val(id).replace(/[$,\s]/g, "");
+    return s === "" || isNaN(s) ? NaN : Number(s);
+  }
+  function r2(n){ return Math.round(n * 100) / 100; }
+  function money(n){ return isNaN(n) ? "" : r2(n).toFixed(2); }
+
+  // Rounded at each step so the printed worksheet checks out by hand.
+  function twValues(){
+    var flight = num("twFlight"), rental = num("twRental"), miles = num("twMiles"),
+        mpg = num("twMpg"), price = r2(num("twPrice"));
+    if (isNaN(rental) && !isNaN(flight)) rental = 0;
+    var fly = r2(flight + rental);
+    var gal = mpg > 0 ? r2(miles / mpg) : NaN;
+    var drive = r2(gal * price);
+    return {
+      flight: flight, rental: rental, fly: fly, miles: miles, mpg: mpg,
+      gal: gal, price: price, drive: drive, save: r2(fly - drive)
+    };
+  }
+  function twCalc(){
+    var v = twValues();
+    $("tw3").value = money(v.fly);
+    $("tw6").value = isNaN(v.gal) ? "" : v.gal.toFixed(2);
+    $("tw8").value = money(v.drive);
+    $("tw9").value = money(v.save);
+  }
+  ["twFlight", "twRental", "twMiles", "twMpg", "twPrice"].forEach(function(id){
+    $(id).addEventListener("input", twCalc);
+  });
+
+  // Google Flights search for the box 9 dates, round trip from ELP
+  $("twFlights").addEventListener("click", function(){
+    var dest = val("twDest"), from = $("from9").value, to = $("to9").value;
+    if (!dest) { $("twDest").focus(); return; }
+    var q = "Flights from ELP to " + dest + (from ? " on " + from : "") + (from && to ? " through " + to : "");
+    window.open("https://www.google.com/travel/flights?hl=en&curr=USD&q=" + encodeURIComponent(q), "_blank", "noopener");
+  });
+
+  // Round-trip driving miles from Fort Bliss. Filled automatically when the
+  // location changes, unless the miles were typed in by hand.
+  var milesByHand = false;
+  $("twMiles").addEventListener("input", function(){ milesByHand = !!val("twMiles"); });
+  function twMsg(id, msg, cls){ var s = $(id); s.textContent = msg; s.className = "status" + (cls ? " " + cls : ""); }
+  async function calcMiles(){
+    var dest = val("twDest");
+    if (!dest) { twMsg("twMilesStatus", "Enter the pass/leave location first.", "err"); return; }
+    twMsg("twMilesStatus", "Looking up the route…");
+    try {
+      var geo = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" +
+        encodeURIComponent(dest)).then(function(r){ return r.json(); });
+      if (!geo.length) throw new Error("Couldn't find \"" + dest + "\". Try \"City, ST\".");
+      var route = await fetch("https://router.project-osrm.org/route/v1/driving/" +
+        TW_ORIGIN.lon + "," + TW_ORIGIN.lat + ";" + geo[0].lon + "," + geo[0].lat + "?overview=false")
+        .then(function(r){ return r.json(); });
+      if (!route.routes || !route.routes.length) throw new Error("No driving route found.");
+      var oneWay = route.routes[0].distance / 1609.344;
+      $("twMiles").value = String(Math.round(oneWay * 2));
+      milesByHand = false;
+      twCalc(); hideResult();
+      twMsg("twMilesStatus", Math.round(oneWay) + " mi each way from " + TW_ORIGIN.name + " (OpenStreetMap).", "good");
+    } catch (err) {
+      twMsg("twMilesStatus", (err && err.message) || "Couldn't calculate miles. Enter them by hand.", "err");
+    }
+  }
+  $("twMilesCalc").addEventListener("click", calcMiles);
+  $("twDest").addEventListener("change", function(){ if (!milesByHand && val("twDest")) calcMiles(); });
+
+  // Vehicle menus: year -> make -> model -> engine/transmission -> combined MPG
+  var mpgByHand = false;
+  $("twMpg").addEventListener("input", function(){ mpgByHand = !!val("twMpg"); });
+  function feg(path){
+    return fetch(FEG + path, { headers: { Accept: "application/json" } }).then(function(r){
+      if (!r.ok) throw new Error("fueleconomy.gov didn't answer (" + r.status + ").");
+      return r.json();
+    });
+  }
+  // A one-item menu comes back as an object instead of a list
+  function menuItems(d){ var m = d && d.menuItem; return !m ? [] : Array.isArray(m) ? m : [m]; }
+  function fillSelect(sel, items, placeholder){
+    sel.innerHTML = "";
+    var o = document.createElement("option"); o.value = ""; o.textContent = placeholder; sel.appendChild(o);
+    items.forEach(function(it){
+      var op = document.createElement("option"); op.value = it.value; op.textContent = it.text; sel.appendChild(op);
+    });
+    sel.disabled = !items.length;
+  }
+  var MENUS = [["twMake", "Make"], ["twModel", "Model"], ["twOpt", "Engine / transmission"]];
+  function resetBelow(i){ for (var k = i; k < MENUS.length; k++) fillSelect($(MENUS[k][0]), [], MENUS[k][1]); }
+  async function loadMenu(i, path){
+    resetBelow(i);
+    twMsg("twVehStatus", "Loading…");
+    try {
+      var items = menuItems(await feg(path));
+      fillSelect($(MENUS[i][0]), items, MENUS[i][1]);
+      twMsg("twVehStatus", items.length ? "" : "No matches on fueleconomy.gov. Enter the MPG by hand.", items.length ? "" : "err");
+      // Pick the only engine automatically
+      if (i === 2 && items.length === 1) { $("twOpt").value = items[0].value; loadMpg(); }
+    } catch (err) {
+      twMsg("twVehStatus", (err && err.message) || "Couldn't reach fueleconomy.gov. Enter the MPG by hand.", "err");
+    }
+  }
+  async function loadMpg(){
+    var id = $("twOpt").value;
+    if (!id) return;
+    twMsg("twVehStatus", "Loading…");
+    try {
+      var v = await feg(encodeURIComponent(id));
+      if (!mpgByHand || !val("twMpg")) { $("twMpg").value = v.comb08; mpgByHand = false; }
+      twMsg("twVehStatus", v.year + " " + v.make + " " + v.model + ": " + v.comb08 + " MPG combined (" +
+        v.city08 + " city / " + v.highway08 + " hwy), " + v.fuelType1 + ".", "good");
+      twCalc(); hideResult();
+    } catch (err) {
+      twMsg("twVehStatus", (err && err.message) || "Couldn't reach fueleconomy.gov. Enter the MPG by hand.", "err");
+    }
+  }
+  (function(){
+    var yr = new Date().getFullYear() + 1, years = [];
+    for (var y = yr; y >= 1984; y--) years.push({ value: String(y), text: String(y) });
+    fillSelect($("twYear"), years, "Year");
+  })();
+  $("twYear").addEventListener("change", function(){
+    if (this.value) loadMenu(0, "menu/make?year=" + this.value); else resetBelow(0);
+  });
+  $("twMake").addEventListener("change", function(){
+    if (this.value) loadMenu(1, "menu/model?year=" + $("twYear").value + "&make=" + encodeURIComponent(this.value));
+    else resetBelow(1);
+  });
+  $("twModel").addEventListener("change", function(){
+    if (this.value) loadMenu(2, "menu/options?year=" + $("twYear").value + "&make=" +
+      encodeURIComponent($("twMake").value) + "&model=" + encodeURIComponent(this.value));
+    else resetBelow(2);
+  });
+  $("twOpt").addEventListener("change", loadMpg);
+
+  // ---------------------------------------------------------------
   // Attachments
   // ---------------------------------------------------------------
   var files = []; // {file, pages}
@@ -537,7 +759,9 @@
 
   function renderFiles(){
     fileList.innerHTML = "";
-    ["TF Raptor Soldier Action Form (filled)", "DA 31 (filled)"].forEach(function(n, i){
+    var fixed = ["TF Raptor Soldier Action Form (filled)", "DA 31 (filled)"];
+    if (worksheetIncluded()) fixed.push("272 Travel Cost Analysis Worksheet");
+    fixed.forEach(function(n, i){
       var li = document.createElement("li"); li.className = "fixed";
       li.innerHTML = '<span class="name"></span><span class="meta">page ' + (i + 1) + "</span>";
       li.firstChild.textContent = n;
@@ -759,6 +983,73 @@
   }
 
   // ---------------------------------------------------------------
+  // 272 Travel Cost Analysis Worksheet (drawn from scratch, US Letter)
+  // ---------------------------------------------------------------
+  var TW_ITEMS = [
+    ["1", "Cost of Flight at time of Pass/Leave Submission:", "(Attach screenshot of flight options)", "flight"],
+    ["2", "Cost of Rental Vehicle at time of Pass/Leave Submission:", "(Attach Screenshot of rental options)", "rental"],
+    ["3", "Total cost to fly to location of Pass/Leave:", "", "fly"],
+    ["4", "Number of Miles to Pass/Leave Location:", "", "miles"],
+    ["5", "Average miles per gallon of POV:", "", "mpg"],
+    ["6", "Number of gallons of fuel used for travel:", "", "gal"],
+    ["7", "Average cost of fuel per gallon at time of pass/leave submission:", "", "price"],
+    ["8", "Total cost to drive to location of Pass/Leave:", "", "drive"],
+    ["9", "Cost Savings to Drive vs Fly:", "", "save"]
+  ];
+
+  async function fillWorksheet(){
+    var doc = await PDFLib.PDFDocument.create();
+    var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    var bold = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+    var page = doc.addPage([612, PAGE_H]);
+    var black = PDFLib.rgb(0, 0, 0);
+    function text(t, x, y, opts){
+      opts = opts || {};
+      var f = opts.font || font, s = opts.size || 11;
+      t = clean(t, f);
+      if (opts.maxW) s = fitSize(f, t, opts.maxW, s);
+      var w = f.widthOfTextAtSize(t, s);
+      var left = opts.align === "right" ? x - w : opts.align === "center" ? x - w / 2 : x;
+      page.drawText(t, { x: left, y: PAGE_H - y, size: s, font: f, color: black });
+      if (opts.underline) page.drawLine({ start: { x: left, y: PAGE_H - y - 2 }, end: { x: left + w, y: PAGE_H - y - 2 }, thickness: 0.6, color: black });
+    }
+    function rule(x1, x2, y){ page.drawLine({ start: { x: x1, y: PAGE_H - y }, end: { x: x2, y: PAGE_H - y }, thickness: 0.8, color: black }); }
+
+    text("272 Travel Cost Analysis Worksheet", 306, 60, { font: bold, size: 13, align: "center" });
+    page.drawLine({ start: { x: 40, y: PAGE_H - 66 }, end: { x: 572, y: PAGE_H - 66 }, thickness: 0.8, color: black });
+
+    // Header: Name / Date / Pass/Leave location
+    var who = [val("rank"), val("last")].filter(Boolean).join(" ").toUpperCase();
+    text("Name:", 40, 90);
+    text(who, 158, 90, { align: "center", maxW: 116 }); rule(98, 218, 92);
+    text("Date:", 232, 90);
+    text(ymd($("reqDate").value), 302, 90, { align: "center", maxW: 76 }); rule(262, 342, 92);
+    text("Pass/Leave location:", 352, 90);
+    text(val("twDest").toUpperCase(), 518, 90, { align: "center", maxW: 104 }); rule(464, 572, 92);
+
+    var v = twValues();
+    var shown = {
+      flight: money(v.flight), rental: money(v.rental), fly: money(v.fly),
+      miles: isNaN(v.miles) ? "" : String(v.miles), mpg: isNaN(v.mpg) ? "" : String(v.mpg),
+      gal: isNaN(v.gal) ? "" : v.gal.toFixed(2), price: money(v.price),
+      drive: money(v.drive), save: money(v.save)
+    };
+    var y = 140;
+    TW_ITEMS.forEach(function(it){
+      text(it[0], 72, y, { font: bold, align: "right" });
+      text(it[1], 84, y, { underline: true, size: 10.5 });
+      if (it[2]) text(it[2], 84, y + 14, { underline: true, size: 10.5 });
+      text(shown[it[3]], 568, y, { align: "right", maxW: 90 });
+      rule(470, 572, y + 3);
+      y += it[2] ? 58 : 46;
+    });
+
+    text("3 = 1 + 2.   6 = 4 / 5.   8 = 6 x 7.   9 = 3 - 8 (positive means driving costs less).", 84, y + 10, { size: 8.5 });
+    text("Miles are round trip from " + TW_ORIGIN.name + "; flight is round trip from El Paso (ELP).", 84, y + 22, { size: 8.5 });
+    return doc;
+  }
+
+  // ---------------------------------------------------------------
   // Attachments into the packet
   // ---------------------------------------------------------------
   async function appendPdf(out, file){
@@ -852,6 +1143,7 @@
     try {
       var out = await PDFLib.PDFDocument.create();
       var parts = [await fillRaptor(), await fillDa31()]; // Action Form first, then DA 31
+      if (worksheetIncluded()) parts.push(await fillWorksheet());
       for (var i = 0; i < parts.length; i++) {
         var pages = await out.copyPages(parts[i], parts[i].getPageIndices());
         pages.forEach(function(p){ out.addPage(p); });
