@@ -228,9 +228,9 @@
     <h2 class="section">272 Travel Cost Analysis Worksheet</h2>
     <label class="check" style="margin-bottom:14px;"><input type="checkbox" id="twInclude" checked>Add the worksheet to the packet</label>
     <div id="twBody">
-      <p class="hint">Compares a round-trip flight from El Paso (ELP) with driving your own vehicle from Fort Bliss. Leave dates come from box 9.</p>
+      <p class="hint">Compares a round-trip flight from El Paso (ELP) with driving your own vehicle. The destination comes from the leave address (box 6) and the dates from box 9.</p>
       <div class="field">
-        <label for="twDest">Pass/leave location (city, state)</label>
+        <label for="twDest">Pass/leave location (filled from box 6)</label>
         <input id="twDest" placeholder="San Antonio, TX">
       </div>
       <div class="field">
@@ -327,9 +327,14 @@
   var DA31_NC_URL = "forms/da31.pdf.enc";             // non-chargeable layout
   var DA31_C_URL = "forms/da31_chargeable.pdf.enc";   // chargeable layout
   var FORM_URLS = [RAPTOR_URL, DA31_NC_URL, DA31_C_URL];
+  // Travel worksheet settings ({"origin": {"lat", "lon"}}), encrypted the same
+  // way so the departure point isn't public. Optional: the worksheet asks for
+  // miles by hand without it.
+  var TRAVEL_URL = "forms/travel.json.enc";
   var KDF_ITER = 600000;
   var PAGE_H = 792; // both forms are US Letter
   var blanks = {}; // decrypted form bytes, keyed by URL
+  var travelCfg = null;
 
   async function unlock(pw){
     var enc = await Promise.all(FORM_URLS.map(function(u){
@@ -347,6 +352,14 @@
       return crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(buf, 16, 12) }, key, new Uint8Array(buf, 28));
     })); // throws on a wrong password
     FORM_URLS.forEach(function(u, i){ blanks[u] = out[i]; });
+    try {
+      var r = await fetch(TRAVEL_URL);
+      if (r.ok) {
+        var tb = await r.arrayBuffer();
+        var plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(tb, 16, 12) }, key, new Uint8Array(tb, 28));
+        travelCfg = JSON.parse(new TextDecoder().decode(plain));
+      }
+    } catch (e) { travelCfg = null; }
   }
 
   var SESSION_KEY = "leavePacketPw";
@@ -603,10 +616,10 @@
   // set WORKSHEET_ENABLED to true, or add ?worksheet=1 to the URL to try it.
   // Fuel economy comes from fueleconomy.gov; miles from OpenStreetMap
   // (Nominatim geocoding + OSRM routing). All three allow browser requests.
+  // The departure point comes from the encrypted travel settings (TRAVEL_URL).
   // ---------------------------------------------------------------
   var WORKSHEET_ENABLED = false;
   var worksheetOn = WORKSHEET_ENABLED || /[?&]worksheet=1(&|$)/.test(location.search);
-  var TW_ORIGIN = { name: "Fort Bliss, TX", lon: -106.4219, lat: 31.8126 };
   var FEG = "https://www.fueleconomy.gov/ws/rest/vehicle/";
   function worksheetIncluded(){ return worksheetOn && $("twInclude").checked; }
 
@@ -649,40 +662,62 @@
 
   // Google Flights search for the box 9 dates, round trip from ELP
   $("twFlights").addEventListener("click", function(){
-    var dest = val("twDest"), from = $("from9").value, to = $("to9").value;
-    if (!dest) { $("twDest").focus(); return; }
+    var addr = $("leaveAddr").value.trim().split("\n");
+    var dest = val("twDest") || addr[addr.length - 1].trim(), from = $("from9").value, to = $("to9").value;
+    if (!dest) { $("leaveAddr").focus(); return; }
     var q = "Flights from ELP to " + dest + (from ? " on " + from : "") + (from && to ? " through " + to : "");
     window.open("https://www.google.com/travel/flights?hl=en&curr=USD&q=" + encodeURIComponent(q), "_blank", "noopener");
   });
 
-  // Round-trip driving miles from Fort Bliss. Filled automatically when the
-  // location changes, unless the miles were typed in by hand.
-  var milesByHand = false;
+  // Round-trip driving miles to the box 6 leave address. Filled automatically
+  // when the address changes, unless the miles were typed in by hand. The
+  // geocoded city also fills the pass/leave location, unless that was typed.
+  var milesByHand = false, destByHand = false;
   $("twMiles").addEventListener("input", function(){ milesByHand = !!val("twMiles"); });
+  $("twDest").addEventListener("input", function(){ destByHand = !!val("twDest"); });
   function twMsg(id, msg, cls){ var s = $(id); s.textContent = msg; s.className = "status" + (cls ? " " + cls : ""); }
+  function geocode(q){
+    return fetch("https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&countrycodes=us&q=" +
+      encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(d){ return d[0] || null; });
+  }
+  // "San Antonio, TX" from a Nominatim result
+  function cityState(g){
+    var a = (g && g.address) || {};
+    var city = a.city || a.town || a.village || a.hamlet || a.county || "";
+    var st = (a["ISO3166-2-lvl4"] || "").replace(/^US-/, "");
+    return [city, st].filter(Boolean).join(", ");
+  }
   async function calcMiles(){
-    var dest = val("twDest");
-    if (!dest) { twMsg("twMilesStatus", "Enter the pass/leave location first.", "err"); return; }
+    var lines = $("leaveAddr").value.split("\n").map(function(s){ return s.trim(); }).filter(Boolean);
+    if (!lines.length) { twMsg("twMilesStatus", "Enter the leave address (box 6) first.", "err"); return; }
+    if (!travelCfg || !travelCfg.origin) {
+      twMsg("twMilesStatus", "The departure point isn't set up yet. Enter the miles by hand.", "err"); return;
+    }
     twMsg("twMilesStatus", "Looking up the route…");
     try {
-      var geo = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" +
-        encodeURIComponent(dest)).then(function(r){ return r.json(); });
-      if (!geo.length) throw new Error("Couldn't find \"" + dest + "\". Try \"City, ST\".");
+      // Whole address first; if that isn't found, just the city/state/ZIP line
+      var g = await geocode(lines.join(", "));
+      if (!g && lines.length > 1) g = await geocode(lines[lines.length - 1]);
+      if (!g) throw new Error("Couldn't find the box 6 address. Check it, or enter the miles by hand.");
+      var o = travelCfg.origin;
       var route = await fetch("https://router.project-osrm.org/route/v1/driving/" +
-        TW_ORIGIN.lon + "," + TW_ORIGIN.lat + ";" + geo[0].lon + "," + geo[0].lat + "?overview=false")
+        o.lon + "," + o.lat + ";" + g.lon + "," + g.lat + "?overview=false")
         .then(function(r){ return r.json(); });
-      if (!route.routes || !route.routes.length) throw new Error("No driving route found.");
+      if (!route.routes || !route.routes.length) throw new Error("No driving route found. Enter the miles by hand.");
       var oneWay = route.routes[0].distance / 1609.344;
       $("twMiles").value = String(Math.round(oneWay * 2));
       milesByHand = false;
+      if (!destByHand && cityState(g)) $("twDest").value = cityState(g);
       twCalc(); hideResult();
-      twMsg("twMilesStatus", Math.round(oneWay) + " mi each way from " + TW_ORIGIN.name + " (OpenStreetMap).", "good");
+      twMsg("twMilesStatus", Math.round(oneWay) + " mi each way (OpenStreetMap).", "good");
     } catch (err) {
       twMsg("twMilesStatus", (err && err.message) || "Couldn't calculate miles. Enter them by hand.", "err");
     }
   }
   $("twMilesCalc").addEventListener("click", calcMiles);
-  $("twDest").addEventListener("change", function(){ if (!milesByHand && val("twDest")) calcMiles(); });
+  $("leaveAddr").addEventListener("change", function(){
+    if (worksheetIncluded() && !milesByHand && val("leaveAddr")) calcMiles();
+  });
 
   // Vehicle menus: year -> make -> model -> engine/transmission -> combined MPG
   var mpgByHand = false;
@@ -1043,9 +1078,6 @@
       rule(470, 572, y + 3);
       y += it[2] ? 58 : 46;
     });
-
-    text("3 = 1 + 2.   6 = 4 / 5.   8 = 6 x 7.   9 = 3 - 8 (positive means driving costs less).", 84, y + 10, { size: 8.5 });
-    text("Miles are round trip from " + TW_ORIGIN.name + "; flight is round trip from El Paso (ELP).", 84, y + 22, { size: 8.5 });
     return doc;
   }
 
